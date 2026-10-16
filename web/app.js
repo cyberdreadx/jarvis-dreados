@@ -135,13 +135,17 @@ function renderProvider() {
   $('api-key').value = ''; $('model').value = current.model; $('workspace-id').value = current.workspace || '';
   $('workspace-field').hidden = id !== 'claude';
   $('local-fields').hidden = id !== 'local'; $('base-url').value = current.base_url || '';
+  const claudeCode = id === 'claudecode';
+  for (const field of ['key-label','api-key','key-hint','remove-key']) $(field).hidden = claudeCode;
+  $('claude-code-fields').hidden = !claudeCode; $('model').required = !claudeCode;
   $('key-label').textContent = id === 'local' ? 'Server API key (optional)' : 'API key';
   $('provider-state').textContent = current.configured ? `${current.name} · key configured on this server` : `${current.name} · add a key to enable AI conversation`;
   $('api-key').placeholder = current.configured ? 'Leave blank to keep the configured key' : 'Paste your provider API key';
   $('remove-key').disabled = !current.has_key;
   if (id === 'local') { $('provider-state').textContent = 'LM Studio or another local OpenAI-compatible server'; $('api-key').placeholder = current.has_key ? 'Leave blank to keep the server key' : 'Leave blank if your server does not require a key'; }
+  if (claudeCode) $('provider-state').textContent = current.configured ? 'Terminal Code · signed in on this computer' : (current.installed ? 'Terminal Code · Claude Code installed, not signed in yet' : 'Terminal Code · Claude Code is not installed on this computer');
   $('model-options').replaceChildren();
-  for (const model of [...new Set([current.model, ...({openai:['gpt-6-astra'],claude:['claude-sonnet-5-5','claude-opus-5-5'],grok:['grok-4.7'],local:[]}[id])])]) {
+  for (const model of [...new Set([current.model, ...({openai:['gpt-6-astra'],claude:['claude-sonnet-5-5','claude-opus-5-5'],grok:['grok-4.7'],local:[],claudecode:['sonnet','opus','haiku']}[id])])]) {
     const option = document.createElement('option'); option.value = model; $('model-options').append(option);
   }
 }
@@ -158,7 +162,7 @@ async function saveProvider(action) {
       addMessage('assistant', `Provider changed to ${providerSettings[activeProvider].name}. This chat keeps its saved context.`);
     }
     renderProvider();
-    $('settings-feedback').textContent = action === 'remove' ? 'Saved key removed.' : (data.ai ? `${providerSettings[activeProvider].name} configured. Send a message to try it.` : 'Provider selected. Add its API key to enable AI conversation.');
+    $('settings-feedback').textContent = action === 'remove' ? 'Saved key removed.' : (data.ai ? `${providerSettings[activeProvider].name} configured. Send a message to try it.` : (activeProvider === 'claudecode' ? 'Terminal Code selected. Install Claude Code and run “claude” in a terminal to sign in, then save again.' : 'Provider selected. Add its API key to enable AI conversation.'));
   } catch (error) { $('settings-feedback').textContent = error.name === 'TimeoutError' ? 'Settings request timed out. Refresh and try again.' : error.message; }
   finally { $('provider-fields').disabled = false; }
 }

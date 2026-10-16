@@ -286,7 +286,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not isinstance(brief, str) or not 1 <= len(brief.strip()) <= 8000:
                     raise ValueError()
                 provider, value = providers.config(data.get('provider'))
-                if (provider == 'local' and not value['model']) or (provider != 'local' and not value['key']):
+                if not providers.ready(provider, value):
                     return self.send(400, {'error': 'Choose and configure an AI provider in Setup first.'})
                 fields = {key: data.get(key, '') for key in ('platform', 'tone', 'audience')}
                 if any(not isinstance(value, str) or len(value) > 300 for value in fields.values()):
@@ -414,7 +414,7 @@ class Handler(BaseHTTPRequestHandler):
             provider, config = providers.config(data.get('provider'))
             local = None if attachments else local_command(message)
             answer = local if local is not None else (contextual_reply(message,providers.SYSTEM + '\nUser personality preferences:\n' + personality,attachments,stage='analyzing' if attachments else 'thinking') if chat or attachments or personality else ai_reply(message, data.get('history', []), provider))
-            source = 'local' if local is not None else ('local ai' if provider == 'local' else (provider if config['key'] else 'local'))
+            source = 'local' if local is not None else ('local ai' if provider == 'local' else ('terminal code' if provider == 'claudecode' else (provider if config['key'] else 'local')))
             finish(answer,source)
         except (context_memory.ContextError,providers.ProviderError) as error:
             self.send(400, {'error': str(error)})

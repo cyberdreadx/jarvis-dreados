@@ -1,5 +1,6 @@
 """Fixed provider endpoints and process-local credentials; never return keys to the UI."""
 import secure_settings
+import claude_code
 import base64
 import binascii
 import json
@@ -16,6 +17,7 @@ PROVIDERS = {
     'claude': {'name': 'Claude', 'env': 'ANTHROPIC', 'model': 'claude-sonnet-5-5', 'url': 'https://api.anthropic.com/v1/messages'},
     'grok': {'name': 'Grok', 'env': 'XAI', 'model': 'grok-4.7', 'url': 'https://api.x.ai/v1/chat/completions'},
     'local': {'name': 'Local AI', 'env': 'LOCAL', 'model': '', 'url': ''},
+    'claudecode': {'name': 'Terminal Code', 'env': 'CLAUDE_CODE', 'model': '', 'url': ''},
 }
 SYSTEM = ('You are DreadOS AI, a concise, warm Windows assistant. Your name is DreadOS AI; previous references to JARVIS are your former name. Answer naturally for speech. '
           'You cannot independently take actions, access files, or observe the computer. '
@@ -46,14 +48,21 @@ def config(provider=None):
     with _lock:
         provider = _active if provider is None else provider
         if not isinstance(provider, str) or provider not in PROVIDERS:
-            raise ValueError('Choose OpenAI, Claude, Grok, or Local AI.')
+            raise ValueError('Choose OpenAI, Claude, Grok, Local AI, or Terminal Code.')
         info = PROVIDERS[provider]
         value = {'key': os.environ.get(info['env'] + '_API_KEY', ''),
                  'model': os.environ.get(info['env'] + '_MODEL', info['model']),
                  'workspace': os.environ.get('ANTHROPIC_WORKSPACE_ID', '') if provider == 'claude' else '',
                  'base_url': os.environ.get('LOCAL_BASE_URL', 'http://127.0.0.1:1234/v1') if provider == 'local' else ''}
         value.update(_settings.get(provider, {}))
+        if provider == 'claudecode': value['key'] = ''  # signs in through the user's own Claude Code, never a stored key
         return provider, value
+
+
+def ready(provider, value):
+    if provider == 'local': return bool(value['model'])
+    if provider == 'claudecode': return claude_code.status()['ready']
+    return bool(value['key'])
 
 
 def status():
@@ -62,8 +71,9 @@ def status():
         for provider, info in PROVIDERS.items():
             _, value = config(provider)
             entries[provider] = {'name': info['name'], 'model': value['model'],
-                                 'configured': bool(value['model']) if provider == 'local' else bool(value['key']),
+                                 'configured': ready(provider, value),
                                  'has_key': bool(value['key']), 'workspace': value['workspace'], 'base_url': value['base_url']}
+            if provider == 'claudecode': entries[provider]['installed'] = claude_code.status()['installed']
         return {'provider': _active, 'providers': entries, 'ai': entries[_active]['configured']}
 
 
@@ -83,7 +93,11 @@ def configure(data):
     key, model, workspace = data.get('key', ''), data.get('model', ''), data.get('workspace', '')
     if not isinstance(key, str) or len(key) > 4096 or (key and not re.fullmatch(r'[!-~]+', key)):
         raise ValueError('Enter an API key without whitespace.')
-    if not isinstance(model, str) or not re.fullmatch(r'[A-Za-z0-9._:/-]{1,150}', model):
+    if provider == 'claudecode':
+        key = ''
+        claude_code.status(refresh=True)
+    model_ok = isinstance(model, str) and (re.fullmatch(r'[A-Za-z0-9._:/\[\]-]{0,150}', model) if provider == 'claudecode' else re.fullmatch(r'[A-Za-z0-9._:/-]{1,150}', model))
+    if not model_ok:
         raise ValueError('Enter a valid model ID.')
     if not isinstance(workspace, str) or (workspace and not re.fullmatch(r'[A-Za-z0-9_-]{1,150}', workspace)):
         raise ValueError('Enter a valid workspace ID, or leave it blank.')
@@ -174,7 +188,7 @@ def reply(message, history, provider=None, instructions=SYSTEM, attachments=None
     info = PROVIDERS[provider]
     if provider == 'local' and not value['model']:
         return failure('Open Setup, choose Local AI, and select a model from your running local server.')
-    if provider != 'local' and not value['key']:
+    if provider not in ('local', 'claudecode') and not value['key']:
         return failure(f'My local commands are ready. Open Setup to add your {info["name"]} API key, or configure it in .env. Try “help” for local commands.')
     messages = []
     for item in (history if prepared else history[-24:]):
@@ -193,6 +207,13 @@ def reply(message, history, provider=None, instructions=SYSTEM, attachments=None
         else:
             content=[{'type':'text','text':message}]+[{'type':'image_url','image_url':{'url':'data:'+i['mime']+';base64,'+i['data']}} for i in images]
         instructions += ' Images are attached to this message. Inspect them if your model supports vision; never invent unseen details.'
+    if provider == 'claudecode':
+        if images:
+            return failure('Image attachments need the Claude API option in Setup. Terminal Code handles text and text files.')
+        try:
+            return claude_code.reply(message, messages, instructions, value['model'], on_delta=on_delta, cancelled=cancelled)
+        except claude_code.ClaudeCodeError as error:
+            return failure(str(error))
     messages.append({'role': 'user', 'content': content})
     headers = {'Content-Type': 'application/json'}
     if provider == 'claude':

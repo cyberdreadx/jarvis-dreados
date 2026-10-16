@@ -49,6 +49,12 @@ In LM Studio, load a chat model and start the local API server. In JARVIS **Setu
 
 Local requests stay on loopback, bypass system proxies, and reject redirects. This first version supports servers on the same computer, not LAN machines. Generation allows up to 120 seconds; model loading and hardware affect speed. For persistent settings, set `LOCAL_BASE_URL`, `LOCAL_MODEL`, optional `LOCAL_API_KEY`, and `JARVIS_PROVIDER=local` in `.env`. Browser voice recognition may still use an external speech service; local AI does not make microphone processing offline.
 
+## Terminal Code (your own Claude sign-in)
+
+Terminal Code lets you chat through Claude Code, Anthropic's command-line program, using your own Claude plan instead of an API key. Install Claude Code, open a terminal, run `claude` and sign in. Then choose **Terminal Code** in **Setup** and click **Use this provider**. Leave Model ID blank for your Claude Code default, or enter `sonnet`, `opus` or `haiku`. To keep it selected after restart, set `JARVIS_PROVIDER=claudecode` in `.env`.
+
+DreadOS never asks for, sees or stores your Claude sign-in; it only runs your own installed `claude` program. Usage counts against your own Claude plan and Anthropic's terms. Each reply runs `claude` once in print mode with all of its tools turned off, so it can only chat. The system prompt is passed in a temporary file and the conversation on standard input, so chat text never appears on the command line. Your DreadOS API keys are not passed to it. Image attachments need an API provider; text files work.
+
 ## Create workspace
 
 **Create** offers guided forms for social posts, artwork prompts, and video briefs. It uses your configured AI provider. Artwork/video drafting produces text direction, not fabricated media. Edit responses, copy or download them, or save up to 30 text drafts to the browser's local storage. Drafts are stored unencrypted in that browser profile; use downloads for backups. Clearing browser data removes them.
