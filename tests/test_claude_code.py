@@ -77,8 +77,15 @@ class ClaudeCodeTests(unittest.TestCase):
 
     def test_missing_install_is_explained(self):
         with patch.object(claude_code, 'executable', return_value=None):
-            with self.assertRaisesRegex(claude_code.ClaudeCodeError, 'not installed'):
+            with self.assertRaisesRegex(claude_code.ClaudeCodeError, 'find Claude Code'):
                 claude_code.reply('hi', [], 'x')
+
+    def test_finds_install_missing_from_path(self):
+        home = Path(self.dir.name) / 'home'
+        (home / '.local/bin').mkdir(parents=True)
+        (home / '.local/bin/claude.exe').write_text('')
+        with patch.object(claude_code.shutil, 'which', return_value=None), patch.object(claude_code.Path, 'home', return_value=home):
+            self.assertEqual(claude_code.executable(), str(home / '.local/bin/claude.exe'))
 
     def test_provider_routes_without_key_and_accepts_blank_model(self):
         result = providers.configure({'provider': 'claudecode', 'key': 'ignored-key', 'model': ''})

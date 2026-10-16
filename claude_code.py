@@ -24,8 +24,20 @@ class ClaudeCodeError(RuntimeError):
     pass
 
 
+def _known_locations():
+    # A server started before Claude Code was installed keeps its old PATH, so also look where the installers put it.
+    home, appdata, local = Path.home(), os.environ.get('APPDATA', ''), os.environ.get('LOCALAPPDATA', '')
+    places = [home / '.local/bin/claude.exe', home / '.local/bin/claude']
+    if appdata: places.append(Path(appdata) / 'npm/claude.cmd')
+    if local: places.append(Path(local) / 'Microsoft/WinGet/Links/claude.exe')
+    return places
+
+
 def executable():
-    return shutil.which('claude')
+    found = shutil.which('claude')
+    if found:
+        return found
+    return next((str(path) for path in _known_locations() if path.is_file()), None)
 
 
 def _env():
@@ -43,7 +55,8 @@ def _flags():
 def status(refresh=False):
     """Report whether `claude` is installed and signed in. Never returns credentials."""
     with _lock:
-        if not refresh and _status['value'] and time.monotonic() - _status['checked'] < 300:
+        ttl = 300 if (_status['value'] or {}).get('ready') else 15
+        if not refresh and _status['value'] and time.monotonic() - _status['checked'] < ttl:
             return _status['value']
         path = executable()
         if not path:
@@ -83,7 +96,7 @@ def command(path, model, prompt_file):
 def reply(message, history, instructions, model='', on_delta=None, cancelled=None, timeout=300):
     path = executable()
     if not path:
-        raise ClaudeCodeError('Claude Code is not installed. Install it from claude.com/product/claude-code, run “claude” once to sign in, then try again.')
+        raise ClaudeCodeError('I can’t find Claude Code on this PC. In PowerShell run: irm https://claude.ai/install.ps1 | iex — then open a new terminal, run “claude” to sign in, and restart DreadOS.')
     WORKDIR.mkdir(parents=True, exist_ok=True)
     prompt = transcript(message, history)
     # The system prompt goes in a file and the conversation on stdin, so no chat text is ever put on the command line.
