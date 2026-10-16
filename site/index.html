@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DreadOS AI · JARVIS</title>
+<meta name="description" content="A local AI assistant for Windows. Your keys, your models, your machine.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<!--
+  DOWNLOAD LINK: every "Download" button points at the href below.
+  Replace "#install" with the real file or release page once you decide where JARVIS is hosted.
+-->
+<div class="grid-bg" aria-hidden="true"></div>
+
+<header class="top">
+  <a class="mark" href="#" aria-label="DreadOS AI home">J<span>.</span></a>
+  <span class="wordmark">DreadOS<sup>-AI</sup></span>
+  <nav>
+    <a href="#features">Features</a>
+    <a href="#install">Install</a>
+    <a href="#privacy">Privacy</a>
+    <a class="btn small" href="#install" data-download>Download</a>
+  </nav>
+</header>
+
+<main>
+  <section class="hero">
+    <p class="eyebrow"><span class="blink">▌</span> PERSONAL INTELLIGENCE / LOCAL FIRST</p>
+    <h1>Human intent.<br><span>Amplified.</span></h1>
+    <p class="lede">JARVIS is an AI assistant that lives on your Windows PC. Talk to it, build with it, create with it. Bring your own AI, or run everything offline.</p>
+    <div class="cta">
+      <a class="btn" href="#install" data-download>⤓ Download for Windows</a>
+      <a class="ghost" href="#install">How to install →</a>
+    </div>
+    <p class="micro">v0.1 · Windows 10/11 · Python 3.10+ · free</p>
+    <figure class="shot">
+      <div class="chrome"><i></i><i></i><i></i><span>127.0.0.1:8765</span></div>
+      <img src="assets/jarvis-cyan.png" alt="The JARVIS assistant screen with the orb and a conversation panel" width="1441" height="1130">
+    </figure>
+  </section>
+
+  <section id="features">
+    <p class="eyebrow">01 / WHAT IT DOES</p>
+    <h2>One command away.</h2>
+    <div class="cards">
+      <article><b>◇</b><h3>Any AI, your choice</h3><p>OpenAI, Claude, Grok, or a local model through LM Studio. Switch any time, no restart.</p></article>
+      <article><b>♪</b><h3>Local voice</h3><p>Click to talk. Speech recognition and natural Kokoro voices can run fully on your machine.</p></article>
+      <article><b>⌘</b><h3>Opens your stuff</h3><p>"Open notepad", "open GitHub", "what time is it". Quick commands, typed or spoken.</p></article>
+      <article><b>✦</b><h3>Creator studio</h3><p>Draft social posts, artwork prompts and video briefs, then send them to connected tools.</p></article>
+      <article><b>⧉</b><h3>Build workspace</h3><p>A code editor with an OpenCode agent beside you, working in the project you pick.</p></article>
+      <article><b>⌖</b><h3>Search and map</h3><p>Free local web search with SearXNG, plus a map view to explore a place and ask about it.</p></article>
+    </div>
+  </section>
+
+  <section class="split">
+    <figure class="shot"><img src="assets/provider-setup.png" alt="Setup window for choosing an AI provider" loading="lazy" width="1390" height="1007"></figure>
+    <div>
+      <p class="eyebrow">02 / YOUR INTELLIGENCE</p>
+      <h2>One JARVIS. Your AI.</h2>
+      <p>Paste a key for the provider you already pay for, or point JARVIS at a model running in LM Studio and keep every word on your own hardware. Keys you save are encrypted with Windows and never sent to the browser.</p>
+    </div>
+  </section>
+
+  <section class="split flip">
+    <figure class="shot"><img src="assets/creator-studio.png" alt="Creator studio with a brief form and a canvas" loading="lazy" width="1390" height="1007"></figure>
+    <div>
+      <p class="eyebrow">03 / CREATE</p>
+      <h2>From idea to something real.</h2>
+      <p>Describe what you want to post, pick a tone and audience, and get a draft you can edit, copy, or save. Connect MCP services like Higgsfield or Canva to turn drafts into actual media. Nothing publishes on its own.</p>
+    </div>
+  </section>
+
+  <section id="install">
+    <p class="eyebrow">04 / INSTALL</p>
+    <h2>Up and running in three steps.</h2>
+    <ol class="steps">
+      <li><span>01</span><div><h3>Get Python</h3><p>Install <a href="https://www.python.org/downloads/windows/" rel="noopener">Python 3.10 or newer</a>. Tick "Add python.exe to PATH" during setup.</p></div></li>
+      <li><span>02</span><div><h3>Download and unzip</h3><p>Grab the zip, unzip it anywhere you like, such as <code>Documents\JARVIS</code>.</p><a class="btn small" href="#install" data-download>⤓ Download JARVIS</a></div></li>
+      <li><span>03</span><div><h3>Launch</h3><p>Double-click <code>Start-JARVIS.cmd</code>, then open <code>http://127.0.0.1:8765</code> in Chrome or Edge. Open <b>Setup</b> to pick your AI.</p></div></li>
+    </ol>
+    <details class="term">
+      <summary>Optional: local voice (offline speech in and out)</summary>
+<pre><span class="p">&gt;</span> cd JARVIS
+<span class="p">&gt;</span> python -m venv .venv-voice
+<span class="p">&gt;</span> .venv-voice\Scripts\pip install -r requirements-voice.txt
+<span class="p">&gt;</span> Start-DreadOS.cmd</pre>
+      <p>After this, <code>Start-DreadOS.cmd</code> and <code>Stop-DreadOS.cmd</code> run JARVIS in the background with the Kokoro voice.</p>
+    </details>
+    <details class="term">
+      <summary>Optional: run AI fully offline</summary>
+      <p>Install <a href="https://lmstudio.ai" rel="noopener">LM Studio</a>, load a chat model and start its local server. In JARVIS Setup choose <b>Local AI</b>, enter <code>http://127.0.0.1:1234/v1</code> and click <b>Find local models</b>.</p>
+    </details>
+  </section>
+
+  <section id="privacy" class="privacy">
+    <p class="eyebrow">05 / PRIVACY</p>
+    <h2>Your machine. Your rules.</h2>
+    <ul>
+      <li>JARVIS runs on <code>127.0.0.1</code>. Nothing is hosted in the cloud by us.</li>
+      <li>Chats, memory and settings stay in the <code>data</code> folder on your PC.</li>
+      <li>Messages go only to the AI provider you choose, or nowhere at all with a local model.</li>
+      <li>The microphone stays off until you click Talk. No wake word, no background listening.</li>
+      <li>Tools only run after you press <b>Approve &amp; run</b>.</li>
+    </ul>
+  </section>
+</main>
+
+<footer>
+  <span>DreadOS AI · HUMAN INTENT. AMPLIFIED.</span>
+  <span class="dim">v0.1 · LOCAL WORKSPACE <i class="dot"></i></span>
+</footer>
+</body>
+</html>
