@@ -1,0 +1,20 @@
+.env
+__pycache__/
+*.log
+
+data/
+.venv-voice/
+.opencode-runtime/
+.venv-qwen/
+
+.editor-runtime/
+
+.gltch-runtime/
+.neon-build-tools/
+builds/
+.cache/
+
+# Personal or unrelated files kept out of the public download
+docs/screenshots/dreados-situation-room.png
+docs/screenshots/energy-*.png
+launcher/norton-review.txt

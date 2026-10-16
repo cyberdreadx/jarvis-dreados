@@ -1,0 +1,49 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "lmstudio/qwen/qwen3.8-27b",
+  "small_model": "lmstudio/qwen/qwen3.8-27b",
+  "enabled_providers": [
+    "lmstudio"
+  ],
+  "provider": {
+    "lmstudio": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "LM Studio",
+      "options": {
+        "baseURL": "http://127.0.0.1:1234/v1"
+      },
+      "models": {
+        "qwen/qwen3.8-27b": {
+          "name": "Qwen local",
+          "limit": {
+            "context": 32768,
+            "output": 4096
+          }
+        }
+      }
+    }
+  },
+  "permission": {
+    "*": "ask",
+    "read": "allow",
+    "glob": "allow",
+    "grep": "allow",
+    "list": "allow",
+    "edit": {
+      "*": "ask",
+      "data/build-projects/*": "allow",
+      "data\\build-projects\\*": "allow"
+    },
+    "bash": "ask",
+    "task": "deny",
+    "external_directory": "deny",
+    "question": "deny"
+  },
+  "share": "disabled",
+  "autoupdate": false,
+  "agent": {
+    "build": {
+      "prompt": "You are the coding agent inside DreadOS Build. Deliver working project files when asked to build, not just plans. Work only in the project directory given in the request. Read PROJECT_BRIEF.md if present. Prefer read/glob/grep/write/edit tools over shell commands. Do not search other projects, chat databases, parent directories or private files for missing conversation context. If the brief is missing, ask a concise question in your reply instead of guessing a different product. For an empty web project, create a self-contained index.html first so the user can preview progress, then iterate. Do not spend the entire turn planning. Report the files actually changed and any validation limits. For changes to existing code, prefer small edit/apply_patch calls over rewriting the entire file. Deliver one working increment at a time. Status questions such as ? or how is it going should get a brief status response, not start another rewrite."
+    }
+  }
+}
