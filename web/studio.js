@@ -76,7 +76,7 @@ async function loadConnections() {
     $('connection-presets').replaceChildren();
     for (const preset of data.presets) {
       const card = element('article',undefined,'connection-card'); card.append(element('span',preset.category,'eyebrow'),element('h2',preset.name),element('p',preset.description));
-      const button = element('button','Set up connection ↗','quiet'); button.onclick = () => { $('connection-name').value = preset.name; $('connection-url').value = preset.url; $('connection-token').value = ''; $('connection-token').placeholder=preset.name==='GLTCH Runner'?'gltch_sk_… (saved with Windows encryption)':'Leave blank for browser sign-in';$('connection-token').focus(); };
+      const button = element('button','Set up connection ↗','quiet'); button.onclick = () => { $('connection-name').value = preset.name; $('connection-url').value = preset.url; $('connection-token').value = ''; $('connection-token').placeholder=preset.name==='GLTCH Runner'?'gltch_sk_… (saved encrypted)':'Leave blank for browser sign-in';$('connection-token').focus(); };
       const docs = element('a','Setup guide','quiet'); docs.href = preset.docs; docs.target = '_blank'; docs.rel = 'noopener noreferrer'; card.append(button,docs); $('connection-presets').append(card);
     }
   } catch (error) { $('connection-status').textContent = error.message; }

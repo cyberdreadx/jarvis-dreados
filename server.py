@@ -8,6 +8,7 @@ import secrets
 import time
 import threading
 import subprocess
+import sys
 import urllib.error
 import urllib.request
 import webbrowser
@@ -51,6 +52,8 @@ import media_library
 TOKEN = secrets.token_urlsafe(32)
 PORT = int(os.environ.get('JARVIS_PORT', '8765'))
 APPS = {'notepad': 'notepad.exe', 'calculator': 'calc.exe', 'file explorer': 'explorer.exe', 'paint': 'mspaint.exe'}
+MAC_APPS = {'notepad': 'TextEdit', 'calculator': 'Calculator', 'file explorer': 'Finder', 'paint': 'Preview',
+            'sticky notes': 'Stickies', 'sublime': 'Sublime Text'}
 SITES = {'youtube': 'https://www.youtube.com', 'google': 'https://www.google.com', 'github': 'https://github.com'}
 
 
@@ -68,6 +71,12 @@ def local_command(message, *, allow_browser_search=True):
     match = re.fullmatch(r'(?:open|launch|start) (.+)', command)
     if match:
         target = match.group(1)
+        if sys.platform == 'darwin':
+            name = {'sticky note': 'sticky notes', 'sublime text': 'sublime'}.get(target, target)
+            if name in MAC_APPS:
+                result = subprocess.run(['/usr/bin/open', '-a', MAC_APPS[name]], capture_output=True, timeout=20)
+                if result.returncode: return f'{MAC_APPS[name]} was not found on this Mac.'
+                return f'Opening {MAC_APPS[name]}.'
         if target in ('sticky notes', 'sticky note'):
             if os.name != 'nt': return 'Sticky Notes is available when DreadOS AI runs on Windows.'
             process=subprocess.Popen([str(Path(os.environ.get('SystemRoot','C:/Windows'))/'explorer.exe'), 'shell:AppsFolder\\Microsoft.MicrosoftStickyNotes_8wekyb3d8bbwe!App'],shell=False)
@@ -439,7 +448,7 @@ if __name__ == '__main__':
         mcp_client.restore_settings()
         startup.start()
     except (ValueError, OSError):
-        startup.state.update(stage='attention', message='Saved settings could not be unlocked. Check your Windows account; the original file was preserved.')
+        startup.state.update(stage='attention', message='Saved settings could not be unlocked. Check your Windows account or macOS Keychain; the original file was preserved.')
     server = ThreadingHTTPServer(('127.0.0.1', PORT), Handler)
     print(f'DreadOS AI online at http://127.0.0.1:{PORT} — Ctrl+C to stop.', flush=True)
     try:

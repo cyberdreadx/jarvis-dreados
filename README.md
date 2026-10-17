@@ -4,6 +4,10 @@
 
 Use **Start DreadOS** / **Stop DreadOS** on the desktop, or `Start-DreadOS.cmd` / `Stop-DreadOS.cmd`. Closing the browser leaves the server available to your iPhone. Start restores saved providers and MCP connections; for the selected local model it checks LM Studio, starts the default local server if necessary, and loads the exact saved model. Custom local servers must be started separately. The header shows startup problems.
 
+## macOS
+
+Download `DreadOS-AI-mac.zip`, unzip it, and install Python 3.10 or newer from python.org if you don't have it. Double-click `Start-DreadOS.command` to start and `Stop-DreadOS.command` to stop. These scripts aren't signed by Apple, so the first time macOS blocks them: open **System Settings → Privacy & Security** and click **Open Anyway**, or run `./Start-DreadOS.command` from Terminal inside the folder. Saved keys are encrypted in `data/settings.mac` with a key kept in your login Keychain (item "DreadOS AI"). App shortcuts open TextEdit, Calculator, Finder, Preview and Stickies. Optional local voice: `python3 -m venv .venv-voice && .venv-voice/bin/pip install -r requirements-voice.txt`. Terminal Code finds `claude` in Homebrew, npm and `~/.local/bin` installs. The Build agent needs OpenCode installed with npm in `.opencode-runtime`.
+
 ## Saved connections, live answers, and chat tools
 
 Provider settings and MCP bearer credentials saved through the UI are encrypted with Windows DPAPI in `data/settings.dpapi`, tied to this Windows account. They restore at server startup. Remove a saved provider key or connection in Setup/Connections to remove it from this store. Environment configuration is still supported; OAuth refresh is not implemented, so expired sign-ins require reconnection. Back up original data; copying the encrypted file to another account is not a credential migration mechanism.

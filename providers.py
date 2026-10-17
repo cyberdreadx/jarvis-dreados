@@ -19,7 +19,7 @@ PROVIDERS = {
     'local': {'name': 'Local AI', 'env': 'LOCAL', 'model': '', 'url': ''},
     'claudecode': {'name': 'Terminal Code', 'env': 'CLAUDE_CODE', 'model': '', 'url': ''},
 }
-SYSTEM = ('You are DreadOS AI, a concise, warm Windows assistant. Your name is DreadOS AI; previous references to JARVIS are your former name. Answer naturally for speech. '
+SYSTEM = ('You are DreadOS AI, a concise, warm desktop assistant. Your name is DreadOS AI; previous references to JARVIS are your former name. Answer naturally for speech. '
           'You cannot independently take actions, access files, or observe the computer. '
           'DreadOS AI can supply live web search snippets and an approximate city. When supplied, use them; '
           'do not deny those capabilities. Never claim to have opened full pages, live maps, or obtained GPS. '

@@ -19,7 +19,7 @@ def start():
             except ValueError:
                 if cfg['base_url'].rstrip('/') not in ('http://127.0.0.1:1234/v1','http://localhost:1234/v1'):
                     raise ValueError('Start your local model server, then reconnect in Setup.')
-                cli = Path.home() / '.lmstudio/bin/lms.exe'
+                cli = Path.home() / ('.lmstudio/bin/lms.exe' if os.name == 'nt' else '.lmstudio/bin/lms')
                 if not cli.exists(): raise ValueError('LM Studio CLI is missing. Start its server in LM Studio.')
                 state.update(message='Starting LM Studio…')
                 result = subprocess.run([str(cli), 'server', 'start'], capture_output=True, timeout=60,

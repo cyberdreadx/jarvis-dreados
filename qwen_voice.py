@@ -1,11 +1,12 @@
 """Optional Qwen3-TTS runner, isolated from Kokoro's dependencies."""
 import json
+import os
 import subprocess
 import tempfile
 import threading
 from pathlib import Path
 ROOT=Path(__file__).resolve().parent
-PYTHON=ROOT/'.venv-qwen/Scripts/python.exe'
+PYTHON=ROOT/('.venv-qwen/Scripts/python.exe' if os.name=='nt' else '.venv-qwen/bin/python')
 MODEL=ROOT/'data/qwen-tts'
 CHOICES={'Ryan':'Ryan · English male','Aiden':'Aiden · American male','Vivian':'Vivian · bright female','Serena':'Serena · gentle female'}
 LOCK=threading.Lock()

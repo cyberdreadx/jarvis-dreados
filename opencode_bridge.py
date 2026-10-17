@@ -8,6 +8,7 @@ import re
 import secrets
 import socket
 import subprocess
+import sys
 import threading
 import time
 import urllib.error
@@ -77,7 +78,10 @@ def start():
                         if health.get('healthy'):return health
                     except ValueError:time.sleep(.3)
                 raise ValueError('OpenCode port 4098 is already occupied, but its health check failed: '+str(health_error)) from None
-        binary=ROOT/'.opencode-runtime/node_modules/opencode-windows-x64-baseline/bin/opencode.exe'
+        modules=ROOT/'.opencode-runtime/node_modules'
+        binary=modules/'opencode-windows-x64-baseline/bin/opencode.exe'
+        if sys.platform=='darwin':
+            binary=next((p for p in (modules/'opencode-darwin-arm64/bin/opencode',modules/'opencode-darwin-x64/bin/opencode',modules/'opencode-darwin-x64-baseline/bin/opencode') if p.exists()),binary)
         if not binary.exists():raise ValueError('Install OpenCode with npm install --prefix .opencode-runtime opencode-ai')
         PROJECTS.mkdir(parents=True,exist_ok=True)
         if not (STATE/'opencode.json').exists():(STATE/'opencode.json').write_text((ROOT/'opencode.config.json').read_text())

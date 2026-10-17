@@ -30,6 +30,9 @@ def _known_locations():
     places = [home / '.local/bin/claude.exe', home / '.local/bin/claude']
     if appdata: places.append(Path(appdata) / 'npm/claude.cmd')
     if local: places.append(Path(local) / 'Microsoft/WinGet/Links/claude.exe')
+    # macOS: Homebrew (Apple silicon and Intel), npm global installs and the older local installer.
+    places += [Path('/opt/homebrew/bin/claude'), Path('/usr/local/bin/claude'),
+               home / '.npm-global/bin/claude', home / '.claude/local/claude']
     return places
 
 
