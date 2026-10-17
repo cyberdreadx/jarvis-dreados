@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>DreadOS AI · JARVIS</title>
-<meta name="description" content="A local AI assistant for Windows. Your keys, your models, your machine.">
+<meta name="description" content="A local AI assistant for Windows and Mac. Your keys, your models, your machine.">
 <meta name="theme-color" content="#090b12">
 <link rel="icon" type="image/png" sizes="192x192" href="assets/icons/icon-192.png">
 <link rel="apple-touch-icon" href="assets/icons/icon-180.png">
@@ -15,7 +15,7 @@
 <body>
 <!--
   DOWNLOAD LINK: every "Download" button points at the newest GitHub release of cyberdreadx/jarvis-dreados.
-  Each release must include an asset named DreadOS-AI-windows.zip.
+  Each release must include assets named exactly DreadOS-AI-windows.zip and DreadOS-AI-mac.zip.
 -->
 <div class="grid-bg" aria-hidden="true"></div>
 
@@ -26,7 +26,7 @@
     <a href="#features">Features</a>
     <a href="#install">Install</a>
     <a href="#privacy">Privacy</a>
-    <a class="btn small" href="https://github.com/cyberdreadx/jarvis-dreados/releases/latest/download/DreadOS-AI-windows.zip" data-download>Download</a>
+    <a class="btn small" href="#install">Download</a>
   </nav>
 </header>
 
@@ -34,12 +34,13 @@
   <section class="hero">
     <p class="eyebrow"><span class="blink">▌</span> PERSONAL INTELLIGENCE / LOCAL FIRST</p>
     <h1>Human intent.<br><span>Amplified.</span></h1>
-    <p class="lede">JARVIS is an AI assistant that lives on your Windows PC. Talk to it, build with it, create with it. Bring your own AI, or run everything offline.</p>
+    <p class="lede">JARVIS is an AI assistant that lives on your computer, Windows or Mac. Talk to it, build with it, create with it. Bring your own AI, or run everything offline.</p>
     <div class="cta">
       <a class="btn" href="https://github.com/cyberdreadx/jarvis-dreados/releases/latest/download/DreadOS-AI-windows.zip" data-download>⤓ Download for Windows</a>
+      <a class="btn alt" href="https://github.com/cyberdreadx/jarvis-dreados/releases/latest/download/DreadOS-AI-mac.zip" data-download>⤓ Download for Mac</a>
       <a class="ghost" href="#install">How to install →</a>
     </div>
-    <p class="micro">v0.2 · Windows 10/11 · Python 3.10+ · free</p>
+    <p class="micro">v0.3 · Windows 10/11 · macOS · Python 3.10+ · free</p>
     <figure class="shot">
       <div class="chrome"><i></i><i></i><i></i><span>127.0.0.1:8765</span></div>
       <img src="assets/jarvis-cyan.png" alt="The JARVIS assistant screen with the orb and a conversation panel" width="1441" height="1130">
@@ -64,7 +65,7 @@
     <div>
       <p class="eyebrow">02 / YOUR INTELLIGENCE</p>
       <h2>One JARVIS. Your AI.</h2>
-      <p>Paste a key for the provider you already pay for, or point JARVIS at a model running in LM Studio and keep every word on your own hardware. Keys you save are encrypted with Windows and never sent to the browser.</p>
+      <p>Paste a key for the provider you already pay for, or point JARVIS at a model running in LM Studio and keep every word on your own hardware. Keys you save are encrypted on your computer, with Windows encryption or your Mac Keychain, and never sent to the browser.</p>
     </div>
   </section>
 
@@ -80,9 +81,10 @@
   <section id="install">
     <p class="eyebrow">04 / INSTALL</p>
     <h2>Up and running in three steps.</h2>
+    <h3 class="os">Windows</h3>
     <ol class="steps">
       <li><span>01</span><div><h3>Get Python</h3><p>Install <a href="https://www.python.org/downloads/windows/" rel="noopener">Python 3.10 or newer</a>. Tick "Add python.exe to PATH" during setup.</p></div></li>
-      <li><span>02</span><div><h3>Download and unzip</h3><p>Grab the zip, unzip it anywhere you like, such as <code>Documents\DreadOS-AI</code>.</p><a class="btn small" href="https://github.com/cyberdreadx/jarvis-dreados/releases/latest/download/DreadOS-AI-windows.zip" data-download>⤓ Download JARVIS</a></div></li>
+      <li><span>02</span><div><h3>Download and unzip</h3><p>Grab the zip, unzip it anywhere you like, such as <code>Documents\DreadOS-AI</code>.</p><a class="btn small" href="https://github.com/cyberdreadx/jarvis-dreados/releases/latest/download/DreadOS-AI-windows.zip" data-download>⤓ Download for Windows</a></div></li>
       <li><span>03</span><div><h3>Launch</h3><p>Double-click <code>Start-JARVIS.cmd</code>, then open <code>http://127.0.0.1:8765</code> in Chrome or Edge. Open <b>Setup</b> to pick your AI.</p></div></li>
     </ol>
     <details class="term">
@@ -92,6 +94,20 @@
 <span class="p">&gt;</span> .venv-voice\Scripts\pip install -r requirements-voice.txt
 <span class="p">&gt;</span> Start-DreadOS.cmd</pre>
       <p>After this, <code>Start-DreadOS.cmd</code> and <code>Stop-DreadOS.cmd</code> run JARVIS in the background with the Kokoro voice.</p>
+    </details>
+
+    <h3 class="os">Mac</h3>
+    <ol class="steps">
+      <li><span>01</span><div><h3>Get Python</h3><p>Install <a href="https://www.python.org/downloads/macos/" rel="noopener">Python 3.10 or newer</a> for macOS. The Python that comes with Apple's developer tools is too old.</p></div></li>
+      <li><span>02</span><div><h3>Download and unzip</h3><p>Grab the Mac zip. Safari unzips it for you; move the <code>DreadOS-AI</code> folder somewhere like Documents.</p><a class="btn small" href="https://github.com/cyberdreadx/jarvis-dreados/releases/latest/download/DreadOS-AI-mac.zip" data-download>⤓ Download for Mac</a></div></li>
+      <li><span>03</span><div><h3>Launch</h3><p>Double-click <code>Start-DreadOS.command</code>. The first time, macOS says it can't check the developer: click <b>Done</b>, open <b>System Settings → Privacy &amp; Security</b>, scroll down and click <b>Open Anyway</b>. JARVIS opens in your browser at <code>http://127.0.0.1:8765</code>. <code>Stop-DreadOS.command</code> stops it.</p></div></li>
+    </ol>
+    <details class="term">
+      <summary>Optional: local voice on Mac</summary>
+<pre><span class="p">$</span> cd ~/Documents/DreadOS-AI
+<span class="p">$</span> python3 -m venv .venv-voice
+<span class="p">$</span> .venv-voice/bin/pip install -r requirements-voice.txt</pre>
+      <p>Then start JARVIS again with <code>Start-DreadOS.command</code>; it picks up the voice setup by itself.</p>
     </details>
     <details class="term">
       <summary>Optional: run AI fully offline</summary>
@@ -104,7 +120,7 @@
     <h2>Your machine. Your rules.</h2>
     <ul>
       <li>JARVIS runs on <code>127.0.0.1</code>. Nothing is hosted in the cloud by us.</li>
-      <li>Chats, memory and settings stay in the <code>data</code> folder on your PC.</li>
+      <li>Chats, memory and settings stay in the <code>data</code> folder on your computer.</li>
       <li>Messages go only to the AI provider you choose, or nowhere at all with a local model.</li>
       <li>The microphone stays off until you click Talk. No wake word, no background listening.</li>
       <li>Tools only run after you press <b>Approve &amp; run</b>.</li>
@@ -114,7 +130,7 @@
 
 <footer>
   <span>DreadOS AI · HUMAN INTENT. AMPLIFIED.</span>
-  <span class="dim">v0.2 · LOCAL WORKSPACE <i class="dot"></i></span>
+  <span class="dim">v0.3 · LOCAL WORKSPACE <i class="dot"></i></span>
 </footer>
 </body>
 </html>
