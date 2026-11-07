@@ -157,3 +157,35 @@ Use **Image** in chat (or **Library → Create image**) to review a prompt, choo
 Approved images run on a background server thread and are tracked in `data/media.sqlite3`. Closing the browser is fine. Keep DreadOS running. Repeated submissions with the same request ID do not generate twice. After a server restart, interrupted jobs become **Check service** instead of being retried automatically; check GLTCH before paying for another request. Provider timeouts and responses with only a job ID also need checking through the connected service.
 
 **Library** shares new image/video tool results, prompts, and saved Create drafts across PC and iPhone using the same private DreadOS server. Search and filter the library, reopen a draft, reuse a prompt, or open a result to download it. Existing browser drafts can be imported explicitly. Remote image/video assets remain provider-hosted URLs and may expire; this is not an offline media backup. Inline image blocks returned by tools are saved in the database. The view shows the newest 500 records; older records remain in the database. Image edit/video generation still use the connected tools in Create.
+
+
+### Build cloud providers
+
+In **Build → AI · LM Studio**, select Claude, OpenAI, Grok, OpenRouter or DeepSeek, enter the exact model ID and API key, then save. Keys already configured in Setup can be reused. Build's provider is independent of the main Assistant. Switch only when all Build tasks are stopped.
+
+Cloud context/output budgets and image support are configured manually; use limits supported by the chosen model. LM Studio continues using its detected loaded context and vision capabilities. Existing project edit and command approval rules are preserved. Cloud requests send the Build conversation and relevant code/images to the selected provider and incur its API charges.
+
+Credentials are stored through DreadOS encrypted settings. OpenCode receives only a per-process loopback relay token, never the cloud API key. The relay accepts only supported inference endpoints at fixed provider URLs, forwards streaming responses, rejects redirects, and redacts credentials from upstream errors. Settings save does not perform paid inference.
+
+
+Build also offers **Auto-approve Bash / terminal commands**, off by default and scoped to the selected coding session in that browser tab. Enabling it approves matching pending shell calls once, including installs and general commands, provided their starting working directory is in the selected project. It does not approve other sessions or external-directory permission requests. Switching projects/sessions or reloading resets the toggle. Turning it off affects future polls; approvals already issued cannot be recalled—use Stop to cancel running work. This is approval automation, not an OS sandbox: commands and project scripts run with the user's permissions and may access files outside the project or the network.
+
+
+### Offline coding reference library
+
+Open **Build → Reference library** to search curated official starter pages or download/update packs. Includes Godot/GDScript 4.5, JavaScript, HTML/CSS, TypeScript, React, Three.js r187 and legacy r170, and Python 3.14. These are focused reference packs, not entire manuals. Unversioned website snapshots are labeled as such. Every result shows its source URL, version and download date. Downloads are explicit; search uses a local SQLite FTS index and needs no API key, embeddings, GPU, Docker or network. Failed updates preserve installed pages. Website/source licensing remains with the original publisher; downloaded content is local under ignored `data/knowledge/`.
+
+Build's read-only `offline_docs_search_docs` MCP tool exposes only bounded searches over this library; it cannot download, execute reference content, or read arbitrary filesystem paths. The agent is instructed to inspect dependency versions, consult matching offline references first, and use official online docs when coverage is missing or incompatible. Reference excerpts remain untrusted data, not execution instructions. Main Assistant integration is separate; this library is currently connected to Build.
+
+To install packs from the terminal: `.venv-voice/Scripts/python.exe -X utf8 knowledge_library.py install`. The MCP transport is `knowledge_library.py mcp`, started by OpenCode automatically.
+
+
+### Build visual checks
+
+Build has a `preview_check_preview` MCP tool when the selected model supports vision. It returns desktop (1280×800) and phone-sized (390×844) viewport images, browser errors, and horizontal-overflow diagnostics. The agent is instructed to inspect these after visual changes, fix observed problems, and stop after three capture/fix attempts if issues remain. This is an agent instruction, not a guarantee that a model will follow it.
+
+For a manual check, open **Build → Preview → Check preview**. Save edits first: capture uses files on disk, not editor drafts. Two screenshots and a review prompt are attached; press Send to request a review. Capture itself stays local; sending screenshots uses your selected Build provider, as with other image attachments.
+
+Only static project HTML and allowed local assets are rendered. For a framework project, build it and select its output HTML (for example `dist/index.html`). External requests are blocked, matching the static preview. This does not test backend servers or click through app interactions. Browser errors and screenshot content are evidence, not a guarantee of correctness.
+
+Install the optional runtime with `python -m pip install -r requirements-preview.txt`, then `python -m playwright install chromium`. Installed Microsoft Edge is also supported as a fallback. The browser uses a fresh isolated context with no saved logins. The MCP process is scoped to its current Build project; it cannot accept arbitrary URLs or shell commands. Refresh DreadOS and reconnect OpenCode after installation.

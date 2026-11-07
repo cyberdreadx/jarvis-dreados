@@ -1,11 +1,22 @@
 let creationKind = 'post', connections = [], selectedTool = null;
 const draftKey = 'jarvis-drafts-v1';
-function showView(name) {
+const viewNames = ['assistant','create','connections','build','situation','media'], viewKey = 'dread-view';
+let currentView = 'assistant';
+function setViewVisible(name) {
+  currentView = name;
   document.body.classList.toggle('ide-active',name==='build');
-  for (const view of ['assistant','create','connections','build','situation','media']) $(view + '-view').hidden = view !== name;
+  for (const view of viewNames) $(view + '-view').hidden = view !== name;
   document.querySelectorAll('[data-view]').forEach(button => {
     if (button.dataset.view === name) button.setAttribute('aria-current','page'); else button.removeAttribute('aria-current');
   });
+}
+function showView(name) {
+  if (!viewNames.includes(name)) name = 'assistant';
+  setViewVisible(name);
+  try { localStorage.setItem(viewKey,name); } catch {}
+  // Keep an existing ?view= link in step so a refresh doesn't jump back to the page it first named.
+  const url = new URL(location.href);
+  if (url.searchParams.has('view') && url.searchParams.get('view') !== name) { url.searchParams.set('view',name); window.history.replaceState(window.history.state,'',url); }
   if (name === 'create' || name === 'connections') loadConnections();
   if (name === 'situation' && typeof interactiveMap!=='undefined' && interactiveMap)requestAnimationFrame(()=>interactiveMap.invalidateSize());
   if (name === 'build') refreshBuildProjects();
@@ -181,4 +192,18 @@ function renderResult(result) {
   const details = element('details'); details.append(element('summary','Full tool response'),element('pre',JSON.stringify(result,null,2))); $('tool-result').append(details);
 }
 renderLibrary();
-if (new URLSearchParams(location.search).get('view') === 'connections') showView('connections');
+// Reopen the last page after a refresh. Show it immediately, then load its data once the API token is ready.
+{
+  let startView = new URLSearchParams(location.search).get('view');
+  if (!startView) try { startView = localStorage.getItem(viewKey); } catch {}
+  if (viewNames.includes(startView) && startView !== 'assistant') {
+    setViewVisible(startView);
+    let waited = 0, scriptsLoaded = false;
+    addEventListener('DOMContentLoaded', () => { scriptsLoaded = true; });
+    const ready = setInterval(() => {
+      waited += 250;
+      if (currentView !== startView || waited > 20000) { clearInterval(ready); return; }
+      if (token && scriptsLoaded) { clearInterval(ready); showView(startView); }
+    }, 250);
+  }
+}

@@ -14,7 +14,8 @@ from contextlib import contextmanager
 import mcp_client
 
 DB = Path(__file__).resolve().parent / 'data' / 'media.sqlite3'
-MEDIA_TOOLS = {'generate_image', 'edit_image', 'generate_video', 'check_job'}
+MEDIA_TOOLS = {'generate_image', 'edit_image', 'generate_video', 'check_job'}  # plus built-in image tools, see capture()
+IMAGE_TYPES = ('image/png', 'image/jpeg', 'image/webp', 'image/svg+xml')  # SVG: built-in diagrams, shown via <img> (no scripts run)
 _quotes = {}
 _lock = threading.RLock()
 
@@ -75,20 +76,51 @@ def result_fields(output, tool):
                     assets.append({'url': value, 'kind': 'video' if re.search(r'\.(mp4|webm)(?:\?|$)', value, re.I) else kind})
         elif block.get('type') == 'resource_link' and safe_url(block.get('uri', '')):
             assets.append({'url': block['uri'], 'kind': 'video' if block.get('mimeType', '').startswith('video/') else kind})
-        elif block.get('type') == 'image' and block.get('mimeType') in ('image/png', 'image/jpeg', 'image/webp'):
+        elif block.get('type') == 'image' and block.get('mimeType') in IMAGE_TYPES:
             value = block.get('data', '')
             if len(value) <= 8_000_000 and re.fullmatch(r'[A-Za-z0-9+/=\s]+', value):
                 assets.append({'url': 'data:' + block['mimeType'] + ';base64,' + value, 'kind': 'image'})
     return {'detail': '\n'.join(texts)[:24000], 'assets': assets[:12]}
 
+def _prompt_of(args, tool=''):
+    """Caption for the library card. Built-in tools have no prompt, so describe what was made."""
+    if isinstance(args.get('chords'), list):
+        return (str(args.get('title') or 'Chord diagrams') + ': ' + ', '.join(str(c) for c in args['chords']))
+    if 'prompt' in args:
+        return str(args['prompt'])
+    if args.get('title'):
+        return str(args['title'])
+    if tool == 'new_site':
+        return f"Website: {args.get('site_title', '')} ({str(args.get('template', '')).replace('_', ' ')})"
+    if isinstance(args.get('wifi'), dict):
+        return 'Wi-Fi QR code: ' + str(args['wifi'].get('ssid', ''))
+    if tool == 'make_qr_code':
+        return 'QR code: ' + str(args.get('url') or args.get('text') or '')[:120]
+    if tool == 'color_palette':
+        return f"{str(args.get('scheme') or 'analogous').replace('-', ' ').capitalize()} palette from {args.get('color', '')}"
+    if tool == 'draw_scale':
+        return f"{args.get('root', '')} {str(args.get('scale', '')).replace('_', ' ')} ({args.get('instrument') or 'guitar'})"
+    return tool.replace('_', ' ').capitalize() or 'Media tool result'
+
+
+def _redact(args):
+    """Never store secrets typed into tool inputs (e.g. a Wi-Fi password) in the library."""
+    if isinstance(args, dict) and isinstance(args.get('wifi'), dict) and args['wifi'].get('password'):
+        return {**args, 'wifi': {**args['wifi'], 'password': '••••••'}}
+    return args
+
+
 def capture(call, response):
-    if call.get('tool') not in MEDIA_TOOLS: return None
+    import builtin_tools
+    if call.get('tool') not in MEDIA_TOOLS | builtin_tools.image_tools(): return None
+    # A built-in tool that failed (bad input) produced nothing worth keeping in the library.
+    if call.get('tool') in builtin_tools.image_tools() and response['result'].get('isError'): return None
     output = response['result']
     fields = result_fields(output, call['tool'])
     return put({'id': str(uuid.uuid4()), 'created': time.time(), 'kind': 'video' if call['tool'] == 'generate_video' else 'image',
         'status': 'failed' if output.get('isError') else ('complete' if fields['assets'] else 'needs_check'),
-        'prompt': str(call.get('arguments', {}).get('prompt', 'Media tool result'))[:8000],
-        'arguments': call.get('arguments', {}), 'service': response['connection'], 'tool': call['tool'], **fields})
+        'prompt': _prompt_of(call.get('arguments', {}), call.get('tool', ''))[:8000],
+        'arguments': _redact(call.get('arguments', {})), 'service': response['connection'], 'tool': call['tool'], **fields})
 
 def catalog():
     conn = next((c for c in mcp_client.public_connections() if c['url'] == 'https://api.gltch.app' and c['status'] == 'connected'), None)

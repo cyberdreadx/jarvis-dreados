@@ -43,13 +43,13 @@ function mediaCard(item){
   const stage={queued:'Queued',running:'Generating',complete:'Ready',failed:'Failed',unknown:'Check service',needs_check:'Check job'}[item.status]||item.status;
   const head=element('div',undefined,'media-card-heading');head.append(element('span',item.kind.toUpperCase(),'eyebrow'),element('span',stage,'media-stage'));card.append(head);
   for(const asset of item.assets||[]){
-    if(!/^https:\/\//.test(asset.url)&&!/^data:image\/(png|jpeg|webp);base64,/.test(asset.url))continue;
+    if(!/^https:\/\//.test(asset.url)&&!/^data:image\/(png|jpeg|webp|svg\+xml);base64,/.test(asset.url))continue;
     const media=document.createElement(asset.kind==='video'?'video':'img');
     if(asset.kind==='video'){media.controls=true;media.preload='metadata';}else {media.alt=item.prompt||'Generated image';media.loading='lazy';}
     media.src=asset.url;media.referrerPolicy='no-referrer';
     media.onerror=()=>{media.hidden=true;const message=element('p','Preview unavailable. Open the original result below.','micro');media.after(message);};
     card.append(media);
-    const link=element('a','Open / download ↗','quiet');link.href=asset.url;link.target='_blank';link.rel='noopener noreferrer';if(asset.url.startsWith('data:'))link.download='dreados-image';card.append(link);
+    const link=element('a','Open / download ↗','quiet');link.href=asset.url;link.target='_blank';link.rel='noopener noreferrer';if(asset.url.startsWith('data:'))link.download=asset.url.startsWith('data:image/svg')?'dreados-diagram.svg':'dreados-image';card.append(link);
   }
   card.append(element('p',(item.prompt||item.text||'Saved result').slice(0,260),'media-prompt'));
   card.append(element('small',`${item.model||item.service||'Draft'} · ${new Date(item.created*1000).toLocaleString()}`,'micro'));
@@ -58,7 +58,7 @@ function mediaCard(item){
   if(item.kind==='draft'){
     const open=element('button','Edit draft ↗','quiet');open.onclick=()=>{showView('create');setKind(item.format||'post');$('draft-output').value=item.text;$('creative-brief').value=item.prompt||'';$('output-title').textContent='Your saved draft.';$('draft-meta').textContent='Shared Library';outputChanged();};card.append(open);
     const download=element('button','Download text','quiet');download.onclick=()=>{const url=URL.createObjectURL(new Blob([item.text],{type:'text/plain;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='dreados-draft.txt';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};card.append(download);
-  }else{
+  }else if(item.service!=='DreadOS Tools'){  // built-in charts/diagrams/QR codes aren't image-generation prompts
     const reuse=element('button','Reuse prompt','quiet');reuse.onclick=()=>openImageReview(item.prompt);card.append(reuse);
   }
   return card;

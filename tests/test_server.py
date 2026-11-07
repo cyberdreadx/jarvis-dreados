@@ -12,6 +12,20 @@ import server
 
 
 class Commands(unittest.TestCase):
+    def test_preview_module_cors_keeps_sandbox_and_api_isolation(self):
+        from unittest.mock import MagicMock
+        for preview in (True,False):
+            handler=MagicMock();handler.style_nonce=None;handler.wfile=io.BytesIO()
+            server.Handler.send(handler,200,b'export {};','text/javascript',preview=preview)
+            headers=dict(c.args for c in handler.send_header.call_args_list)
+            if preview:
+                self.assertEqual(headers['Access-Control-Allow-Origin'],'null')
+                self.assertIn('sandbox allow-scripts;',headers['Content-Security-Policy'])
+                self.assertNotIn('allow-same-origin',headers['Content-Security-Policy'])
+                self.assertIn("connect-src 'none'",headers['Content-Security-Policy'])
+            else:self.assertNotIn('Access-Control-Allow-Origin',headers)
+            self.assertNotIn('Access-Control-Allow-Credentials',headers)
+
     def test_greeting_and_clock(self):
         self.assertIn('online', server.local_command('Hey Jarvis, hello!'))
         self.assertIn('It is', server.local_command('What time is it?'))

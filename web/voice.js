@@ -26,35 +26,105 @@ function stopVoice(){
   if(voiceObjectURL){URL.revokeObjectURL(voiceObjectURL);voiceObjectURL=null;}
   if(!busy&&!listening)activity('SYSTEM READY');
 }
-function speechChunks(text){
-  const clean=text.replace(/```[\s\S]*?```/g,' Code example omitted from speech. ').replace(/https?:\/\/\S+/g,' link ').replace(/[*#`_]/g,'').trim();
-  return clean.match(/[\s\S]{1,350}(?:[.!?]\s+|\s+|$)|[\s\S]{1,350}/g)||[];
+function speechSegments(text){
+  let clean='';const sourceEnds=[];
+  const append=(value,start,end=null)=>{
+    for(let index=0;index<value.length;index++){
+      clean+=value[index];
+      sourceEnds.push(end===null?start+index+1:index===value.length-1?end:start);
+    }
+  };
+  // Keep the original positions when replacing code/URLs or stripping Markdown.
+  const omitted=/```[\s\S]*?```|https?:\/\/\S+|[*#`_]/g;
+  let cursor=0;
+  for(const match of text.matchAll(omitted)){
+    append(text.slice(cursor,match.index),cursor);
+    if(match[0].startsWith('```'))append(' Code example omitted from speech. ',match.index,match.index+match[0].length);
+    else if(match[0].startsWith('http'))append(' link ',match.index,match.index+match[0].length);
+    cursor=match.index+match[0].length;
+  }
+  append(text.slice(cursor),cursor);
+  const start=clean.length-clean.trimStart().length,end=clean.trimEnd().length;
+  clean=clean.slice(start,end);const positions=sourceEnds.slice(start,end);
+  const chunks=[];let offset=0;
+  for(const chunk of clean.match(/[\s\S]{1,350}(?:[.!?]\s+|\s+|$)|[\s\S]{1,350}/g)||[]){
+    chunks.push({text:chunk,sourceEnds:positions.slice(offset,offset+chunk.length)});offset+=chunk.length;
+  }
+  return chunks;
 }
-async function say(text,preview=false,configuration=voiceConfig){
+function speechChunks(text){return speechSegments(text).map(chunk=>chunk.text);}
+function waitForVoice(promise,signal){
+  return new Promise((resolve,reject)=>{
+    const abort=()=>reject(new DOMException('Voice stopped.','AbortError'));
+    if(signal.aborted)abort();else signal.addEventListener('abort',abort,{once:true});
+    Promise.resolve(promise).then(resolve,reject).finally(()=>signal.removeEventListener('abort',abort));
+  });
+}
+// onProgress(sourceEnd) uses character positions in the original reply.
+async function say(text,preview=false,configuration=voiceConfig,onProgress=null){
   if(!preview&&!$('speak').checked)return;
   stopVoice();const generation=voiceGeneration;
-  if(configuration.engine==='browser'){if(preview){const enabled=$('speak').checked;$('speak').checked=true;browserSay(text);$('speak').checked=enabled;}else browserSay(text);return;}
-  if(configuration.engine==='qwen'?!voiceCatalog?.qwen?.available:!voiceAvailable){$('voice-note').textContent='This voice engine is unavailable. Open Voice to choose another engine.';return;}
+  const controller=new AbortController();voiceAbort=controller;const signal=controller.signal;
   try{
-    await connectVoiceMeter();
+    if(configuration.engine==='browser'){await browserSay(text,onProgress,signal,preview);return;}
+    if(configuration.engine==='qwen'?!voiceCatalog?.qwen?.available:!voiceAvailable){$('voice-note').textContent='This voice engine is unavailable. Open Voice to choose another engine.';return;}
+    await waitForVoice(connectVoiceMeter(),signal);
+    if(generation!==voiceGeneration)return;
     if(!busy&&!listening)activity('PREPARING VOICE','thinking');
-    for(const chunk of speechChunks(text)){
-      if(generation!==voiceGeneration)return;
-      voiceAbort=new AbortController();
-      const response=await fetch('/api/speech',{method:'POST',headers:{'Content-Type':'application/json','X-Jarvis-Token':token},body:JSON.stringify({engine:configuration.engine,text:chunk,voice:configuration.voice,style:configuration.style||'',speed:Number(configuration.speed)}),signal:AbortSignal.any([voiceAbort.signal,AbortSignal.timeout(configuration.engine==='qwen'?320000:60000)])});
+    const chunks=speechSegments(text);
+    const synthesize=async chunk=>{
+      const response=await fetch('/api/speech',{method:'POST',headers:{'Content-Type':'application/json','X-Jarvis-Token':token},body:JSON.stringify({engine:configuration.engine,text:chunk.text,voice:configuration.voice,style:configuration.style||'',speed:Number(configuration.speed)}),signal:AbortSignal.any([signal,AbortSignal.timeout(configuration.engine==='qwen'?320000:60000)])});
       if(!response.ok){const error=await response.json();throw Error(error.error||'Speech failed.');}
-      const blob=await response.blob();if(generation!==voiceGeneration)return;
+      return response.blob();
+    };
+    // Generate the next chunk while the current one plays, so there is no silent gap between chunks.
+    let upcoming=chunks.length?synthesize(chunks[0]):null;
+    for(const [position,chunk] of chunks.entries()){
+      if(generation!==voiceGeneration)return;
+      const blob=await waitForVoice(upcoming,signal);if(generation!==voiceGeneration)return;
+      upcoming=position+1<chunks.length?synthesize(chunks[position+1]):null;
+      upcoming?.catch(()=>{}); // Awaited on the next pass; this only silences an early rejection.
       const player=$('voice-player');if(voiceObjectURL)URL.revokeObjectURL(voiceObjectURL);voiceObjectURL=URL.createObjectURL(blob);
       player.src=voiceObjectURL;player.hidden=!preview;
       await new Promise((resolve,reject)=>{
-        player.onended=resolve;player.onerror=()=>reject(Error('Audio playback failed.'));
-        player.onpause=()=>{if(generation!==voiceGeneration)resolve();};
-        player.play().then(()=>{if(!busy&&!listening)activity('SPEAKING','speaking');}).catch(()=>reject(Error('Playback was blocked. Open Voice and press Preview voice to enable audio.')));
+        let settled=false,frame=null;
+        const cleanup=()=>{
+          if(frame!==null)cancelAnimationFrame(frame);
+          player.removeEventListener('ended',ended);player.removeEventListener('error',failed);
+          player.removeEventListener('playing',playing);signal.removeEventListener('abort',stopped);
+        };
+        const finish=error=>{if(settled)return;settled=true;cleanup();if(error)reject(error);else resolve();};
+        const ended=()=>finish(),failed=()=>finish(Error('Audio playback failed.')),stopped=()=>finish();
+        const tick=()=>{
+          frame=null;
+          if(settled||generation!==voiceGeneration||player.ended||player.paused)return;
+          if(onProgress&&Number.isFinite(player.duration)&&player.duration>0){
+            const fraction=Math.max(0,Math.min(1,player.currentTime/player.duration));
+            const index=Math.min(chunk.text.length-1,Math.floor(fraction*chunk.text.length));
+            onProgress(chunk.sourceEnds[index]);
+          }
+          frame=requestAnimationFrame(tick);
+        };
+        const playing=()=>{if(frame===null)tick();};
+        player.addEventListener('ended',ended);player.addEventListener('error',failed);
+        player.addEventListener('playing',playing);signal.addEventListener('abort',stopped,{once:true});
+        player.play().then(()=>{
+          if(settled||generation!==voiceGeneration)return;
+          if(!busy&&!listening)activity('SPEAKING','speaking');
+          playing();
+        }).catch(()=>finish(Error('Playback was blocked. Open Voice and press Preview voice to enable audio.')));
       });
+      if(generation!==voiceGeneration)return;
+      onProgress?.(chunk.sourceEnds.at(-1));
     }
     if(preview)$('voice-status').textContent='Preview complete. Save voice to use it for replies.';
-  }catch(error){if(error.name!=='AbortError'){ $('voice-status').textContent=error.message;$('voice-note').textContent=error.message; }}
-  finally{if(generation===voiceGeneration&&!busy&&!listening)activity('SYSTEM READY');}
+  }catch(error){if(generation===voiceGeneration&&error.name!=='AbortError'){ $('voice-status').textContent=error.message;$('voice-note').textContent=error.message; }}
+  finally{
+    // Playback can fail while the next chunk is still being fetched.
+    controller.abort();
+    if(voiceAbort===controller)voiceAbort=null;
+    if(generation===voiceGeneration&&!busy&&!listening)activity('SYSTEM READY');
+  }
 }
 async function loadVoices(){
   const response=await fetch('/api/voices');const data=await response.json();voiceAvailable=data.available;

@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 
 LIMIT=500_000
+VIEW_LIMIT=5_000_000
 SKIP={'.git','node_modules','.venv','venv','__pycache__','.next','.opencode','.ssh','.aws','.codex','.dreados-history'}
 _lock=threading.Lock()
 _previews={}
@@ -30,12 +31,12 @@ def revision(raw):return hashlib.sha256(raw).hexdigest()
 def read(root,name):
     path=safe_path(root,name)
     if not path.is_file():raise ValueError('File not found.')
-    if path.stat().st_size>LIMIT:raise ValueError('Open files smaller than 500 KB in this editor.')
+    if path.stat().st_size>VIEW_LIMIT:raise ValueError('This file exceeds the 5 MB viewer limit.')
     raw=path.read_bytes()
     try:content=raw.decode('utf-8')
     except UnicodeDecodeError:raise ValueError('This file is binary; choose a UTF-8 text file.') from None
     if '\x00' in content:raise ValueError('This file is binary; choose a text file.')
-    return {'path':name,'content':content,'revision':revision(raw)}
+    return {'path':name,'content':content,'revision':revision(raw),'readonly':len(raw)>LIMIT,'size':len(raw)}
 
 def tree(root):
     files=[];truncated=False

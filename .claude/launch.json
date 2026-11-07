@@ -1,0 +1,12 @@
+﻿{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "agent-bus",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["agent_bus.py", "serve", "--relay", "--port", "8787"],
+      "port": 8787,
+      "url": "http://127.0.0.1:8787"
+    }
+  ]
+}

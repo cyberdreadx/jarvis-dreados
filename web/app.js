@@ -9,9 +9,40 @@ function stopAssistantVoice() {
   if (typeof window.stopVoice === 'function') return window.stopVoice();
   window.speechSynthesis?.cancel();
 }
-function speakAssistantReply(text) {
-  if (typeof window.say === 'function') return window.say(text);
-  if ($('speak').checked) $('voice-note').textContent = 'Voice is still loading. Your reply is available in chat.';
+function speakAssistantReply(text, article) {
+  if (typeof window.say !== 'function') {
+    if ($('speak').checked) $('voice-note').textContent = 'Voice is still loading. Your reply is available in chat.';
+    return;
+  }
+  if (!$('speak').checked || !article) return window.say(text);
+  // Reveal the reply word by word as it is spoken; any stop, error or skipped voice shows the full text.
+  const sync = voiceTextSync(article, text);
+  return Promise.resolve(window.say(text, false, undefined, sync.progress)).catch(() => {}).finally(sync.done);
+}
+function voiceTextSync(article, text) {
+  const words = Array.from(text.matchAll(/\S+\s*/g));
+  let body = article.children[1], shown = -1, finished = false;
+  const render = (count, waiting) => {
+    const messages = $('messages'), atBottom = messages.scrollHeight - messages.scrollTop - messages.clientHeight < 80;
+    const partial = count >= words.length ? text : count ? text.slice(0, words[count - 1].index + words[count - 1][0].length) : '';
+    let next;
+    if (waiting) { next = document.createElement('p'); next.className = 'pending-line'; next.textContent = 'Preparing voice…'; }
+    else if (window.renderBuildMarkdown) next = renderBuildMarkdown(partial);
+    else { next = document.createElement('p'); next.textContent = partial; if (count >= words.length) next.dataset.pendingMarkdown = text; }
+    body.replaceWith(next); body = next;
+    if (atBottom) messages.scrollTop = messages.scrollHeight;
+  };
+  render(0, true);
+  return {
+    // Use original source positions: word lengths and omitted code/links vary.
+    progress(sourceEnd) {
+      if (finished || !Number.isFinite(sourceEnd)) return;
+      let count = 0;
+      while (count < words.length && words[count].index < sourceEnd) count++;
+      if (count > shown) { shown = count; render(count); }
+    },
+    done() { if (!finished) { finished = true; if (shown < words.length) render(words.length); } },
+  };
 }
 let activeRequestId=null;
 let headlineState='idle';
@@ -49,13 +80,37 @@ function addMessage(role, text, source = '') {
   $('messages').scrollTop = $('messages').scrollHeight; return article;
 }
 function setBusy(value) { busy = value; $('send').disabled = value || !token; $('attach').disabled = value; $('web-search').disabled = value; $('personality').disabled = value; $('mic').disabled = value || !recognition || !token; $('clear').disabled = value; $('setup').disabled = value || !token; document.querySelectorAll('[data-command]').forEach(b => b.disabled = value || !token); }
-function browserSay(text) {
-  if (!speech || !$('speak').checked) return;
+function browserSay(text, onProgress, signal = null, preview = false) {
+  if (!speech || (!preview && !$('speak').checked) || signal?.aborted) return Promise.resolve();
   speech.cancel(); const utterance = new SpeechSynthesisUtterance(text); utterance.rate = 1; utterance.pitch = .9;
   const voices = speech.getVoices(); const voice = voices.find(v => v.lang === 'en-GB') || voices.find(v => v.lang.startsWith('en')); if (voice) utterance.voice = voice;
-  utterance.onstart = () => { if (!busy && !listening) activity('SPEAKING', 'speaking'); };
-  utterance.onend = utterance.onerror = () => { if (!busy && !listening) activity('SYSTEM READY'); };
-  speech.speak(utterance);
+  return new Promise(resolve => {
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      signal?.removeEventListener('abort', finish);
+      utterance.onstart = utterance.onboundary = utterance.onend = utterance.onerror = null;
+      if (!busy && !listening) activity('SYSTEM READY');
+      resolve();
+    };
+    const revealWord = index => {
+      const word = /\S+/.exec(text.slice(index));
+      if (word) onProgress?.(index + word.index + word[0].length);
+    };
+    utterance.onstart = () => {
+      if (finished) return;
+      if (!busy && !listening) activity('SPEAKING', 'speaking');
+      revealWord(0);
+    };
+    // Some voices report charLength=0. Resolve the word from charIndex itself.
+    utterance.onboundary = event => {
+      if (!finished && (!event.name || event.name === 'word')) revealWord(event.charIndex);
+    };
+    utterance.onend = utterance.onerror = finish;
+    signal?.addEventListener('abort', finish, {once: true});
+    speech.speak(utterance);
+  });
 }
 function showPendingReply(){
   const node=addMessage('assistant','','working');node.classList.add('pending-reply');node.setAttribute('role','status');
@@ -72,7 +127,7 @@ async function send(text) {
   stopAssistantVoice(); if (listening) recognition.abort();
   addMessage('user', text + (attachments.length ? '\nAttached: ' + attachments.map(a => a.name).join(', ') : '')); $('input').value = ''; setBusy(true); activity('THINKING', 'thinking');
   const requestId=crypto.randomUUID(),pending=showPendingReply();activeRequestId=requestId;let polling=false;
-  const progressTimer=setInterval(async()=>{if(polling)return;polling=true;try{const r=await fetch('/api/chat-progress?id='+requestId,{headers:{'X-Jarvis-Token':token},signal:AbortSignal.timeout(3000)});if(r.ok){const progress=await r.json();if(pending.node.isConnected){pending.update(progress.stage);if(progress.text){let partial=pending.node.querySelector('.stream-text');if(!partial){partial=document.createElement('p');partial.className='stream-text';pending.node.append(partial);}partial.textContent=progress.text;}}}}catch{}finally{polling=false;}},700);
+  const progressTimer=setInterval(async()=>{if(polling)return;polling=true;try{const r=await fetch('/api/chat-progress?id='+requestId,{headers:{'X-Jarvis-Token':token},signal:AbortSignal.timeout(3000)});if(r.ok){const progress=await r.json();if(pending.node.isConnected){pending.update(progress.stage);if(progress.text&&!$('speak').checked){let partial=pending.node.querySelector('.stream-text');if(!partial){partial=document.createElement('p');partial.className='stream-text';pending.node.append(partial);}partial.textContent=progress.text;}}}}catch{}finally{polling=false;}},700);
   try {
     const response = await fetch('/api/chat', {method:'POST', headers:{'Content-Type':'application/json','X-Jarvis-Token':token},body:JSON.stringify({request_id:requestId,stream:true,message:text,chat_id:currentChat.id,version:currentChat.version,history:[],provider:activeProvider,attachments,system_prompt:systemPrompt,web_search:$('web-search').checked,use_tools:$('chat-tools').checked}),signal:AbortSignal.timeout(900000)});
     const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Unable to complete the request.');
@@ -82,7 +137,7 @@ async function send(text) {
     if(data.tool_proposal)renderToolProposal(article,data.tool_proposal);
     if(data.context?.compacted_messages){const note=document.createElement('small');note.className='context-note';note.textContent=`Memory includes ${data.context.compacted_messages} earlier messages${data.context.retrieved?' · original excerpts recalled':''}. Originals stay saved.`;article.append(note);}
     if(data.version!==undefined){currentChat.version=data.version;if(currentChat.title==='New chat')currentChat.title=text.slice(0,80);$('conversation-title').textContent=currentChat.title;}
-    attachments=[]; renderAttachments(); history.push({role:'user',content:text},{role:'assistant',content:data.reply}); history = history.slice(-12); speakAssistantReply(data.reply); refreshLibrary().catch(()=>{});
+    attachments=[]; renderAttachments(); history.push({role:'user',content:text},{role:'assistant',content:data.reply}); history = history.slice(-12); speakAssistantReply(data.reply, article); refreshLibrary().catch(()=>{});
   } catch (error) { addMessage('assistant', error.name === 'TimeoutError' ? 'The request timed out. Please try again.' : (error.message === 'Failed to fetch' ? 'Connection lost. Make sure DreadOS AI is running, then refresh this page.' : error.message), 'connection'); }
   finally { activeRequestId=null;clearInterval(progressTimer);pending.node.remove();setBusy(false); activity('SYSTEM READY'); $('input').focus(); }
 }
@@ -277,7 +332,9 @@ function renderToolProposal(article, proposal) {
   const box=document.createElement('section');box.className='tool-approval';
   const heading=document.createElement('strong');heading.textContent=proposal.service+' · '+proposal.tool;
   const details=document.createElement('pre');details.textContent=JSON.stringify(proposal.arguments,null,2);
-  const notice=document.createElement('p');notice.textContent='These inputs will be sent to this service. Generation may spend service credits; other tools may change external data. Review before running.';
+  const notice=document.createElement('p');notice.textContent=proposal.service==='DreadOS Tools'
+    ?'Built into DreadOS: runs locally on this computer. Free, no network, no credits.'
+    :'These inputs will be sent to this service. Generation may spend service credits; other tools may change external data. Review before running.';
   const approve=document.createElement('button');approve.className='primary';approve.textContent='Approve & run';
   const cancel=document.createElement('button');cancel.className='quiet';cancel.textContent='Dismiss';
   cancel.onclick=()=>{approve.disabled=true;cancel.disabled=true;notice.textContent='Dismissed. No tool was run.';};
@@ -289,8 +346,9 @@ function renderToolProposal(article, proposal) {
       if(currentChat?.id!==approvedChat){notice.textContent='Tool finished in its original chat. Reopen that chat to see the result.';return;}
       const output=addMessage('assistant',result.reply,result.source);
       if(result.media_item)output.append(mediaCard(result.media_item));
+      const shownInCard=(result.media_item?.assets||[]).length>0;  // don't show the same image twice
       for(const part of result.result?.content||[]) {
-        if(part.type==='image'&&['image/png','image/jpeg','image/webp'].includes(part.mimeType)){
+        if(!shownInCard&&part.type==='image'&&['image/png','image/jpeg','image/webp','image/svg+xml'].includes(part.mimeType)){
           const img=document.createElement('img');img.className='saved-image';img.alt='Tool result';img.src='data:'+part.mimeType+';base64,'+part.data;output.append(img);
         }
         const urls=part.type==='resource_link'?[part.uri]:(part.text||'').match(/https:\/\/[^\s<>"')]+/g)||[];

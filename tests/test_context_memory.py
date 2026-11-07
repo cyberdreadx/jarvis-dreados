@@ -11,6 +11,15 @@ import server
 import test_server
 
 class MemoryTests(unittest.TestCase):
+    def test_usage_estimate_accounts_for_summary_and_draft(self):
+        chat={'messages':[{'id':1,'role':'user','content':'old '*1000},{'id':2,'role':'user','content':'recent'}],
+              'summary':{'through_id':1,'content':'Remember this'}}
+        with patch('providers.reply') as reply:
+            value=memory.usage(chat,'hello',[{'type':'image'}],'local')
+            plain=memory.usage(chat,'','', 'local')
+            self.assertGreater(value['used'],plain['used']+4096)
+            self.assertTrue(value['compacted'])
+            reply.assert_not_called()
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory()
         self.db=patch.object(chat_store,'DB_PATH',Path(self.tmp.name)/'chats.db');self.db.start()

@@ -100,7 +100,8 @@ class LocalAndMCP(unittest.TestCase):
         with self.assertRaises(ValueError):
             mcp_client.call({'id': connection['id'], 'tool': 'unknown', 'arguments': {}})
         mcp_client.remove(connection['id'])
-        self.assertEqual(mcp_client.public_connections(), [])
+        # Built-in services (e.g. DreadOS Diagrams) are always listed; no user connections exist yet.
+        self.assertEqual([c for c in mcp_client.public_connections() if c['id'] not in mcp_client.BUILTIN], [])
 
     def test_mcp_endpoint_validation(self):
         for value in ('http://example.com/mcp', 'file:///etc/passwd', 'https://user:secret@example.com/mcp', 'https://example.com/mcp?token=secret'):

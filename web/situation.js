@@ -14,7 +14,7 @@ function selectMapPlace(place){
  $('live-map').hidden=false;$('map-empty').hidden=true;
  if(!interactiveMap){
   interactiveMap=L.map('live-map',{zoomControl:true});
-  mapLayers={streets:L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}),satellite:L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Tiles &copy; Esri — Sources: Esri, Maxar, Earthstar Geographics, and the GIS User Community'})};
+  mapLayers={streets:L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,/* OSM's tile policy blocks requests with no Referer (DreadOS pages default to no-referrer). Send only our origin, never the page path. */referrerPolicy:'strict-origin-when-cross-origin',attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}),satellite:L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Tiles &copy; Esri — Sources: Esri, Maxar, Earthstar Geographics, and the GIS User Community'})};
   setMapLayer(activeMapLayer);
  }
  interactiveMap.invalidateSize();interactiveMap.setView([lat,lon],14);

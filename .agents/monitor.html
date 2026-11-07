@@ -1,0 +1,855 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Agent Bus</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Orbitron:wght@600;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#05060d; --panel:rgba(11,13,28,.78); --line:rgba(130,140,255,.16);
+  --text:#d3d9ff; --dim:#6a7199; --you:#ff3bd4; --claude:#ff9a3c; --chatgpt:#2ff3d0;
+  --core:#8a7dff; --bad:#ff3b5c;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+  font:12.5px/1.5 "JetBrains Mono",ui-monospace,Consolas,monospace}
+body{display:grid;grid-template-rows:auto 1fr;overflow:hidden}
+body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:50;
+  background:repeating-linear-gradient(0deg,rgba(255,255,255,.028) 0 1px,transparent 1px 3px)}
+header{display:flex;align-items:center;gap:14px;padding:10px 16px;border-bottom:1px solid var(--line);
+  background:linear-gradient(90deg,rgba(255,59,212,.09),transparent 35%,transparent 65%,rgba(47,243,208,.09))}
+.logo{font-family:Orbitron,sans-serif;font-weight:800;font-size:19px;letter-spacing:.2em;position:relative;
+  color:#fff;text-shadow:0 0 14px rgba(138,125,255,.85)}
+.logo::before,.logo::after{content:attr(data-t);position:absolute;inset:0;opacity:.75}
+.logo::before{color:var(--you);clip-path:inset(0 0 55% 0);animation:g1 3.3s infinite steps(1)}
+.logo::after{color:var(--chatgpt);clip-path:inset(55% 0 0 0);animation:g2 2.8s infinite steps(1)}
+@keyframes g1{0%,91%{transform:none}92%{transform:translate(-3px,1px)}95%{transform:translate(2px,-1px)}98%{transform:none}}
+@keyframes g2{0%,87%{transform:none}88%{transform:translate(3px,0)}93%{transform:translate(-2px,1px)}96%{transform:none}}
+.sub{color:var(--dim);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase}
+.hud{margin-left:auto;display:flex;gap:16px;align-items:center;font-size:11px;color:var(--dim);letter-spacing:.08em}
+.hud b{color:var(--text);font-weight:600}
+.led{width:8px;height:8px;border-radius:50%;background:var(--bad);box-shadow:0 0 10px var(--bad);display:inline-block;margin-right:6px;vertical-align:middle}
+.led.ok{background:var(--chatgpt);box-shadow:0 0 10px var(--chatgpt);animation:blink 2s infinite}
+@keyframes blink{50%{opacity:.45}}
+main{display:grid;grid-template-columns:minmax(0,1fr) 340px;grid-template-rows:minmax(0,1fr) minmax(280px,40vh);min-height:0}
+#stage{position:relative;grid-row:1;grid-column:1;min-height:0;overflow:hidden}
+canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.legend{position:absolute;left:14px;top:12px;display:flex;gap:12px;flex-wrap:wrap;font-size:10.5px;color:var(--dim);letter-spacing:.08em;pointer-events:none}
+.legend i{display:inline-block;width:7px;height:7px;margin-right:5px;border-radius:2px;vertical-align:middle}
+.view-hint{position:absolute;left:14px;bottom:10px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:10px;color:var(--dim);letter-spacing:.06em;user-select:none}
+.view-hint b{color:var(--text);font-weight:600}
+.view-hint button{font:inherit;font-size:10px;padding:2px 8px;color:var(--core);background:rgba(10,10,25,.6);border:1px solid rgba(138,125,255,.45);cursor:pointer;letter-spacing:.08em}
+.view-hint button:hover{background:var(--core);color:#05060d;box-shadow:0 0 12px var(--core)}
+aside{grid-row:1/3;grid-column:2;overflow:auto;padding:12px 14px 20px;background:var(--panel);border-left:1px solid var(--line)}
+h2{font-family:Orbitron,sans-serif;font-size:10.5px;letter-spacing:.22em;color:var(--dim);margin:18px 0 8px;font-weight:600;
+  display:flex;justify-content:space-between}
+h2:first-child{margin-top:2px}
+h2 span{font-family:"JetBrains Mono";letter-spacing:.05em;color:var(--text)}
+.card{border:1px solid var(--line);border-left:3px solid var(--c);padding:7px 9px;margin-bottom:7px;
+  background:linear-gradient(90deg,color-mix(in srgb,var(--c) 10%,transparent),transparent 70%)}
+.card .row{display:flex;justify-content:space-between;gap:8px}
+.card .nm{color:var(--c);font-family:Orbitron,sans-serif;font-weight:600;letter-spacing:.14em;font-size:11px}
+.card .st{font-size:10px;letter-spacing:.12em;color:var(--dim)}
+.card .st.on{color:var(--c)}
+.card .tx{color:var(--text);opacity:.85;margin-top:3px;word-break:break-word}
+.files{list-style:none;margin:4px 0 0;padding:0}
+.files li{display:flex;gap:8px;align-items:baseline;padding:1px 0;word-break:break-all}
+.files .code{color:var(--dim);min-width:18px;font-size:10.5px}
+.files .own{margin-left:auto;font-size:10px;letter-spacing:.08em;white-space:nowrap}
+.empty{color:var(--dim);font-style:italic}
+.bad{color:var(--bad)}
+#feedwrap{grid-row:2;grid-column:1;border-top:1px solid var(--line);display:flex;flex-direction:column;min-height:0;background:rgba(4,5,12,.9)}
+#feed{flex:1;overflow:auto;padding:8px 14px;min-height:110px}
+.ev{display:grid;grid-template-columns:58px 74px 64px minmax(0,1fr);gap:8px;padding:2px 0;animation:in .5s ease-out}
+@keyframes in{from{opacity:0;transform:translateX(-8px);filter:blur(2px)}}
+.ev .t{color:var(--dim)}
+.ev .a{font-weight:600;letter-spacing:.06em}
+.ev .k{font-size:10px;letter-spacing:.12em;text-transform:uppercase;opacity:.8;padding-top:1px}
+.ev .m{word-break:break-word}
+.ev .f{color:var(--dim)}
+form#compose{display:flex;flex-direction:column;gap:7px;padding:9px 14px 10px;border-top:1px solid var(--line);position:relative}
+textarea#msg{width:100%;min-height:76px;max-height:40vh;resize:vertical;line-height:1.5;white-space:pre-wrap}
+textarea#msg:focus{border-color:var(--you);box-shadow:0 0 0 1px var(--you),0 0 18px rgba(255,59,212,.18)}
+.cbar{display:flex;gap:8px;align-items:center}
+.cbar .meter{margin-left:auto;color:var(--dim);font-size:10.5px;letter-spacing:.04em;text-align:right;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cbar .meter.bad{color:var(--bad)}
+button.ghostbtn{color:var(--core);border-color:rgba(138,125,255,.5);font-family:"JetBrains Mono";letter-spacing:.06em}
+button.ghostbtn:hover{background:var(--core);color:#05060d;box-shadow:0 0 14px var(--core)}
+.tray{display:flex;gap:8px;flex-wrap:wrap}
+.tray .shot{position:relative;width:76px;height:56px;border:1px solid var(--core);background:#000;overflow:hidden}
+.tray .shot img{width:100%;height:100%;object-fit:cover;display:block}
+.tray .shot button{position:absolute;top:2px;right:2px;padding:0 5px;font-size:11px;line-height:16px;color:#fff;
+  background:rgba(0,0,0,.7);border:1px solid var(--bad);font-family:inherit;letter-spacing:0}
+.tray .shot button:hover{background:var(--bad);box-shadow:none}
+.dropcover{display:none;position:absolute;inset:4px;border:2px dashed var(--chatgpt);background:rgba(5,6,14,.88);
+  color:var(--chatgpt);font-family:Orbitron,sans-serif;letter-spacing:.2em;font-size:12px;place-items:center;pointer-events:none}
+#compose.drag .dropcover{display:grid}
+.ev .m{white-space:pre-wrap}
+.ev .m.clamp{max-height:7.6em;overflow:hidden;-webkit-mask-image:linear-gradient(#000 60%,transparent);mask-image:linear-gradient(#000 60%,transparent)}
+.ev .more{grid-column:-2/-1;justify-self:start;font-size:10.5px;padding:1px 8px;color:var(--core);border-color:rgba(138,125,255,.4);
+  font-family:"JetBrains Mono";letter-spacing:.04em}
+.ev .shots{grid-column:-2/-1;display:flex;gap:6px;flex-wrap:wrap;margin:3px 0 2px}
+.ev .shots img{height:72px;max-width:160px;object-fit:cover;border:1px solid var(--line);display:block}
+.ev .shots a:hover img{border-color:var(--chatgpt);box-shadow:0 0 12px rgba(47,243,208,.35)}
+select,input,textarea,button{font:inherit;color:var(--text);background:#0b0d1c;border:1px solid var(--line);padding:6px 8px;outline:none}
+input{flex:1;min-width:0}
+input:focus,select:focus{border-color:var(--you);box-shadow:0 0 0 1px var(--you)}
+button{color:var(--you);border-color:var(--you);letter-spacing:.16em;font-family:Orbitron,sans-serif;font-size:10.5px;cursor:pointer}
+button:hover{background:var(--you);color:#05060d;box-shadow:0 0 16px var(--you)}
+.hud button{font:inherit;font-size:11px;letter-spacing:.08em;padding:4px 9px;cursor:pointer}
+button.pilot{color:var(--dim);background:transparent;border:1px solid var(--line);font-family:"JetBrains Mono",monospace}
+button.pilot:hover{border-color:var(--chatgpt);color:var(--text);background:rgba(47,243,208,.08);box-shadow:none}
+button.stopbtn{color:var(--bad);border:1px solid var(--bad);background:rgba(255,59,92,.08);font-family:Orbitron,sans-serif;font-weight:600;letter-spacing:.16em}
+button.stopbtn:hover{background:var(--bad);color:#05060d;box-shadow:0 0 18px var(--bad)}
+button.stopbtn.hot{animation:alarm 1.2s infinite}
+@keyframes alarm{50%{box-shadow:0 0 16px var(--bad);background:rgba(255,59,92,.25)}}
+button.stopbtn:disabled{opacity:.35;cursor:default;animation:none;background:transparent;color:var(--bad);box-shadow:none}
+.card .cardstop{margin-top:6px;font-size:10px;padding:2px 8px;color:var(--bad);border:1px solid var(--bad);background:transparent;
+  font-family:Orbitron,sans-serif;letter-spacing:.14em;cursor:pointer}
+.card .cardstop:hover{background:var(--bad);color:#05060d;box-shadow:0 0 12px var(--bad)}
+.card .cardbtns{display:flex;gap:6px;flex-wrap:wrap}
+.card .cardbtns:empty{display:none}
+.card .cardhand{margin-top:6px;font-size:10px;padding:2px 8px;color:var(--core);border:1px solid var(--core);background:transparent;
+  font-family:Orbitron,sans-serif;letter-spacing:.14em;cursor:pointer}
+.card .cardhand:hover{background:var(--core);color:#05060d;box-shadow:0 0 12px var(--core)}
+button.target{display:flex;align-items:center;gap:10px;font:inherit;font-size:11px;letter-spacing:.08em;
+  color:var(--text);background:rgba(138,125,255,.08);border:1px solid rgba(138,125,255,.45);padding:5px 10px;
+  cursor:pointer;max-width:46vw;font-family:"JetBrains Mono",monospace}
+button.target:hover{background:rgba(138,125,255,.2);box-shadow:0 0 14px rgba(138,125,255,.5);color:var(--text)}
+.target .tl{color:var(--dim);font-size:10px;letter-spacing:.2em}
+.target #targetName{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.target .tc{color:var(--core);font-size:10px;letter-spacing:.14em;white-space:nowrap}
+#modal{position:fixed;inset:0;z-index:40;display:grid;place-items:center;padding:16px;
+  background:rgba(3,3,10,.72);backdrop-filter:blur(5px)}
+#modal[hidden]{display:none}
+.dlg{width:min(640px,100%);max-height:calc(100vh - 32px);overflow:auto;background:#0a0b19;
+  border:1px solid rgba(138,125,255,.5);box-shadow:0 0 40px rgba(138,125,255,.25),inset 0 0 60px rgba(138,125,255,.05);
+  padding:18px 20px;position:relative}
+.dlg::before{content:"";position:absolute;inset:0 0 auto;height:2px;background:linear-gradient(90deg,var(--you),var(--core),var(--chatgpt))}
+.dlg h3{font-family:Orbitron,sans-serif;letter-spacing:.24em;font-size:15px;margin:0 0 4px;color:#fff;text-shadow:0 0 12px var(--core)}
+.dlg .hint{color:var(--dim);margin:0 0 14px}
+.step{font-family:Orbitron,sans-serif;font-size:10.5px;letter-spacing:.22em;color:var(--core);margin:16px 0 8px}
+.step small{font-family:"JetBrains Mono";color:var(--dim);letter-spacing:.04em;text-transform:none}
+.pathrow{display:flex;gap:8px}
+.pathrow input{flex:1}
+.dlg button{color:var(--core);border-color:var(--core)}
+.dlg button:hover{background:var(--core);color:#05060d;box-shadow:0 0 16px var(--core)}
+.dlg button.primary{color:var(--chatgpt);border-color:var(--chatgpt);padding:8px 18px}
+.dlg button.primary:hover{background:var(--chatgpt)}
+.dlg button.ghost{color:var(--dim);border-color:var(--line)}
+.dlg button.ghost:hover{background:var(--line);color:var(--text);box-shadow:none}
+.dlg button:disabled{opacity:.4;cursor:wait}
+.plist{display:grid;gap:5px;max-height:190px;overflow:auto}
+.pitem{display:flex;flex-direction:column;align-items:flex-start;text-align:left;gap:1px;padding:7px 10px;
+  background:transparent;border:1px solid var(--line);color:var(--text);cursor:pointer;font:inherit;letter-spacing:0}
+.dlg .pitem{color:var(--text);border-color:var(--line)}
+.dlg .pitem:hover{background:rgba(138,125,255,.12);color:var(--text);box-shadow:none;border-color:rgba(138,125,255,.5)}
+.dlg .pitem.sel{border-color:var(--chatgpt);background:rgba(47,243,208,.08);box-shadow:0 0 0 1px var(--chatgpt)}
+.pitem b{font-weight:600}
+.pitem span{color:var(--dim);font-size:11px;word-break:break-all}
+.pitem em{font-style:normal;color:var(--chatgpt);font-size:10px;letter-spacing:.14em}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.dlg .chip{padding:4px 9px;font-size:11.5px;letter-spacing:0;color:var(--dim);border:1px solid var(--line);background:transparent;font-family:"JetBrains Mono"}
+.dlg .chip:hover{color:var(--text);background:rgba(255,154,60,.1);box-shadow:none}
+.dlg .chip.on{color:#05060d;background:var(--claude);border-color:var(--claude)}
+.err{color:var(--bad);min-height:1.5em;margin-top:12px}
+.actions{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:6px}
+.actions .sum{color:var(--dim);font-size:11px;min-width:0;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:860px){
+  button.target{max-width:100%}
+  html,body{height:auto;overflow:auto}
+  body{display:block}
+  header{flex-wrap:wrap;padding:10px 16px}
+  .hud{margin-left:0;width:100%}
+  main{display:block}
+  #stage{height:58vh;min-height:340px}
+  #feedwrap{height:auto}
+  #feed{max-height:320px}
+  .cbar{flex-wrap:wrap}
+  .cbar .meter{order:5;width:100%;margin-left:0;text-align:left}
+  aside{border-left:0;border-top:1px solid var(--line);padding:12px 16px 24px}
+  .ev{grid-template-columns:48px 62px minmax(0,1fr)}
+  .ev .k{display:none}
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo" data-t="AGENT//BUS">AGENT//BUS</div>
+  <button class="target" id="target" type="button" title="Choose which project the agents work in">
+    <span class="tl">PROJECT</span><span id="targetName">…</span><span class="tc">CHANGE ▾</span>
+  </button>
+  <div class="hud">
+    <span><span class="led" id="led"></span><b id="link">CONNECTING</b></span>
+    <button type="button" class="pilot" id="autoBtn" title="Click to pause or resume automatic agent runs">AUTOPILOT <b id="auto">OFF</b></button>
+    <button type="button" class="stopbtn" id="stopBtn" title="Stop every running agent now and pause autopilot">■ STOP</button>
+    <span>EVENTS <b id="count">0</b></span>
+    <span>Δ FILES <b id="delta">0</b></span>
+    <span><b id="clock">--:--:--</b></span>
+  </div>
+</header>
+<main>
+  <section id="stage">
+    <canvas id="cv"></canvas>
+    <div class="legend">
+      <span><i style="background:var(--you)"></i>YOU</span>
+      <span><i style="background:var(--claude)"></i>CLAUDE</span>
+      <span><i style="background:var(--chatgpt)"></i>CHATGPT</span>
+      <span><i style="background:var(--core)"></i>REPO CORE</span>
+      <span><i style="background:var(--bad)"></i>CONFLICT</span>
+    </div>
+    <div class="view-hint"><span><b>drag</b> rotate</span><span><b>scroll / pinch</b> zoom</span><span><b>shift-drag</b> pan</span><button id="viewReset" type="button" title="Reset the camera (or double-click the scene)">⟲ RESET VIEW</button></div>
+  </section>
+  <section id="feedwrap">
+    <div id="feed"></div>
+    <form id="compose" autocomplete="off">
+      <div id="tray" class="tray" hidden></div>
+      <textarea id="msg" rows="3" spellcheck="true"
+        placeholder="Message the agents… paste (Ctrl+V) or drop screenshots here.  Enter = send · Shift+Enter = new line"></textarea>
+      <div class="cbar">
+        <select id="to" aria-label="Recipient">
+          <option value="all">→ ALL</option>
+          <option value="claude">→ CLAUDE</option>
+          <option value="chatgpt">→ CHATGPT</option>
+        </select>
+        <button type="button" id="attachBtn" class="ghostbtn" title="Attach screenshots">📎 IMAGE</button>
+        <input type="file" id="fileIn" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
+        <span id="meter" class="meter"></span>
+        <button type="submit" id="sendBtn">TRANSMIT</button>
+      </div>
+      <div class="dropcover">DROP SCREENSHOTS TO ATTACH</div>
+    </form>
+  </section>
+  <aside id="side"></aside>
+</main>
+<div id="modal" hidden role="dialog" aria-modal="true" aria-labelledby="mTitle">
+  <div class="dlg">
+    <h3 id="mTitle">SELECT TARGET</h3>
+    <p class="hint">Choose the project folder Claude and ChatGPT should work in.</p>
+
+    <div class="step">① PICK A PROJECT</div>
+    <div class="pathrow">
+      <button type="button" id="browseBtn">📁 BROWSE…</button>
+      <input id="pathIn" placeholder="…or paste a folder path and press Enter" spellcheck="false">
+    </div>
+    <div class="step" id="recentHead">RECENT</div>
+    <div class="plist" id="recentList"></div>
+    <div class="step" id="foundHead">FOUND ON THIS PC</div>
+    <div class="plist" id="foundList"></div>
+
+    <div class="step">② LIMIT TO FOLDERS <small>optional: leave all off to allow the whole project</small></div>
+    <div class="chips" id="focusList"><span class="empty">pick a project first</span></div>
+
+    <div class="err" id="projErr"></div>
+    <div class="actions">
+      <button type="button" class="ghost" id="cancelBtn">CANCEL</button>
+      <span class="sum" id="projSum"></span>
+      <button type="button" class="primary" id="engageBtn">③ ENGAGE ▸</button>
+    </div>
+  </div>
+</div>
+<script>
+(() => {
+const COLORS = {you:'#ff3bd4', claude:'#ff9a3c', chatgpt:'#2ff3d0', core:'#8a7dff', relay:'#8a7dff', bad:'#ff3b5c'};
+const GLYPH = {you:'◉', claude:'✶', chatgpt:'◎'};
+const colorOf = a => COLORS[a] || `hsl(${[...String(a)].reduce((h,c)=>(h*31+c.charCodeAt(0))>>>0,7)%360} 90% 64%)`;
+const $ = id => document.getElementById(id);
+const cv = $('cv'), ctx = cv.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+let S = {agents:[], changes:[], conflicts:[], events:[], total:0};
+let lastSeq = null, online = false, pollFails = 0;
+const packets = [], ripples = [], flashes = {};
+
+function resize(){
+  const r = cv.getBoundingClientRect();
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = r.width; H = r.height;
+  cv.width = Math.max(1, W*DPR); cv.height = Math.max(1, H*DPR);
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+new ResizeObserver(resize).observe(cv);
+
+// ---------- 3D atom scene: perspective, depth of field, parallax ----------
+const TAU = Math.PI * 2;
+const cam = {yaw: 0, pitch: -0.38, px: 0, py: 0, D: 1100};
+let pointer = null;
+cv.parentElement.addEventListener('pointermove', e => {
+  const r = cv.getBoundingClientRect();
+  pointer = {x: (e.clientX - r.left) / r.width - .5, y: (e.clientY - r.top) / r.height - .5};
+});
+cv.parentElement.addEventListener('pointerleave', () => { pointer = null; });
+
+// User camera: drag rotates, wheel/pinch zooms, shift/right-drag pans, double-click resets.
+const view = {yaw: 0, pitch: 0, zoom: 1, tzoom: 1, panX: 0, panY: 0};
+const unit = () => Math.min(W * .62, H * .78) * .5 * view.zoom;  // one world unit in px
+{
+  const stage = cv.parentElement, touches = new Map();
+  let drag = null, pinch = null;
+  const clampPitch = v => Math.max(-1.35, Math.min(1.35, v));
+  stage.style.cursor = 'grab'; stage.style.touchAction = 'none';
+  stage.addEventListener('contextmenu', e => e.preventDefault());
+  stage.addEventListener('pointerdown', e => {
+    if (e.target.closest('.legend, .view-hint button')) return;
+    stage.setPointerCapture(e.pointerId); touches.set(e.pointerId, {x: e.clientX, y: e.clientY});
+    if (touches.size === 2){
+      const [a, b] = [...touches.values()]; pinch = {d: Math.hypot(a.x - b.x, a.y - b.y), zoom: view.tzoom}; drag = null; return;
+    }
+    drag = {x: e.clientX, y: e.clientY, yaw: view.yaw, pitch: view.pitch, panX: view.panX, panY: view.panY,
+            pan: e.shiftKey || e.button === 2 || e.button === 1};
+    stage.style.cursor = drag.pan ? 'move' : 'grabbing';
+  });
+  stage.addEventListener('pointermove', e => {
+    if (touches.has(e.pointerId)) touches.set(e.pointerId, {x: e.clientX, y: e.clientY});
+    if (pinch && touches.size === 2){
+      const [a, b] = [...touches.values()];
+      view.tzoom = Math.max(.4, Math.min(5, pinch.zoom * Math.hypot(a.x - b.x, a.y - b.y) / Math.max(1, pinch.d))); return;
+    }
+    if (!drag) return;
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y, k = Math.max(1, unit());
+    if (drag.pan){ view.panX = drag.panX - dx / k; view.panY = drag.panY - dy / k; }
+    else { view.yaw = drag.yaw + dx * .008; view.pitch = clampPitch(drag.pitch + dy * .008); }
+  });
+  const end = e => { touches.delete(e.pointerId); if (touches.size < 2) pinch = null; if (!touches.size){ drag = null; stage.style.cursor = 'grab'; } };
+  stage.addEventListener('pointerup', end); stage.addEventListener('pointercancel', end);
+  stage.addEventListener('wheel', e => { e.preventDefault(); view.tzoom = Math.max(.4, Math.min(5, view.tzoom * Math.exp(-e.deltaY * .0015))); }, {passive: false});
+  const reset = () => Object.assign(view, {yaw: 0, pitch: 0, tzoom: 1, panX: 0, panY: 0});
+  stage.addEventListener('dblclick', reset);
+  document.getElementById('viewReset').addEventListener('click', reset);
+}
+const ORIGIN = {x: 0, y: 0, z: 0};
+function tilt(p, ax, az){
+  let c = Math.cos(ax), s = Math.sin(ax);
+  const y = p.y*c - p.z*s, z = p.y*s + p.z*c;
+  c = Math.cos(az); s = Math.sin(az);
+  return {x: p.x*c - y*s, y: p.x*s + y*c, z};
+}
+function project(p){
+  const k = unit();
+  let x = (p.x - cam.px) * k, y = (p.y - cam.py) * k, z = p.z * k, c = Math.cos(cam.yaw), s = Math.sin(cam.yaw);
+  [x, z] = [x*c + z*s, -x*s + z*c];
+  c = Math.cos(cam.pitch); s = Math.sin(cam.pitch);
+  [y, z] = [y*c - z*s, y*s + z*c];
+  const f = cam.D / Math.max(80, cam.D + z);
+  return {x: W/2 + x*f, y: H*.5 + y*f, z, f, behind: cam.D + z < 120};   // behind = too close/past the camera
+}
+// 0 = in the focal plane (the nucleus), 1 = far out of focus
+const blurOf = z => Math.min(1, Math.abs(z) / (unit() * 1.05));
+const frontOf = z => 1 - Math.min(1, Math.max(0, (z + unit()*.9) / (unit()*1.8)));
+
+const rgbCache = new Map(), spriteCache = new Map(), bokehCache = new Map();
+function rgb(color){
+  if (!rgbCache.has(color)){
+    const c = document.createElement('canvas'); c.width = c.height = 1;
+    const g = c.getContext('2d'); g.fillStyle = color; g.fillRect(0, 0, 1, 1);
+    const d = g.getImageData(0, 0, 1, 1).data; rgbCache.set(color, [d[0], d[1], d[2]]);
+  }
+  return rgbCache.get(color);
+}
+function makeSprite(cache, color, stops){
+  if (cache.has(color)) return cache.get(color);
+  const [r, g, b] = rgb(color), s = document.createElement('canvas'); s.width = s.height = 128;
+  const x = s.getContext('2d'), gr = x.createRadialGradient(64, 64, 0, 64, 64, 64);
+  for (const [at, a, white] of stops) gr.addColorStop(at, white ? `rgba(255,255,255,${a})` : `rgba(${r},${g},${b},${a})`);
+  x.fillStyle = gr; x.fillRect(0, 0, 128, 128); cache.set(color, s); return s;
+}
+const sprite = c => makeSprite(spriteCache, c, [[0,1,1],[.1,1],[.3,.4],[.6,.08],[1,0]]);          // in-focus glow
+const bokeh = c => makeSprite(bokehCache, c, [[0,.3],[.62,.26],[.82,.42],[.93,.12],[1,0]]);        // out-of-focus disc
+function glow(x, y, size, color, alpha){
+  if (alpha <= .004 || size < .3) return;
+  ctx.globalAlpha = Math.min(1, alpha); ctx.drawImage(sprite(color), x - size, y - size, size*2, size*2);
+}
+function particle(p, size, color, alpha){
+  if (p.behind) return;
+  const b = blurOf(p.z), s = size * p.f * (1 + b*2.4);
+  if (b > .42){ ctx.globalAlpha = Math.min(1, alpha * (1 - b*.5) * .6); ctx.drawImage(bokeh(color), p.x - s, p.y - s, s*2, s*2); }
+  else glow(p.x, p.y, s * 2.3, color, alpha * (1 - b*.45));
+}
+
+const STAR_COLORS = ['#c7d0ff', '#c7d0ff', '#ffffff', '#ff9adf', '#7ff6e0'];
+const stars = Array.from({length: 230}, () => {
+  const near = Math.random() < .08;
+  return {x: (Math.random()-.5) * (near ? 3.2 : 10), y: (Math.random()-.5) * (near ? 2.4 : 6.5),
+          z: near ? -.55 - Math.random()*.5 : 1.4 + Math.random()*5.5, s: near ? 3 + Math.random()*6 : .4 + Math.random()*1.2,
+          tw: Math.random()*TAU, c: STAR_COLORS[Math.floor(Math.random()*STAR_COLORS.length)]};
+});
+const NUC = 170;
+const nucleus = Array.from({length: NUC}, (_, i) => {
+  const y = 1 - (i + .5) / NUC * 2, r = Math.sqrt(1 - y*y), th = i * 2.399963, R = .13 + Math.random()*.1;
+  const roll = Math.random();
+  return {x: Math.cos(th)*r*R, y: y*R, z: Math.sin(th)*r*R, s: 1.4 + Math.random()*2.2, ph: Math.random()*TAU,
+          c: roll < .12 ? '#ffffff' : roll < .34 ? '#ff7ae0' : roll < .44 ? '#5fe8ff' : COLORS.core};
+});
+
+const ORBITS = {you: {r: 1.0, ax: 1.22, az: .2, ph: 0}, claude: {r: .8, ax: .45, az: .6, ph: 2.1}, chatgpt: {r: .9, ax: -.52, az: -.66, ph: 4.2}};
+function orbitOf(name){
+  if (!ORBITS[name]){
+    const h = [...String(name)].reduce((a, c) => (a*31 + c.charCodeAt(0)) >>> 0, 7);
+    ORBITS[name] = {r: .62 + (h % 5)*.07, ax: ((h % 97)/97 - .5)*2.4, az: (((h >> 4) % 89)/89 - .5)*2.4, ph: h % 7};
+  }
+  return ORBITS[name];
+}
+const theta = {}, trails = {};
+function electron(name){ const o = orbitOf(name), t = theta[name] ?? o.ph; return tilt({x: Math.cos(t)*o.r, y: 0, z: Math.sin(t)*o.r}, o.ax, o.az); }
+const agentNames = () => [...new Set(['you', 'claude', 'chatgpt', ...S.agents.map(a => a.name)])];
+
+function agentInfo(name){ return S.agents.find(a=>a.name===name) || {name, last_seen:null, status:'', claims:[]}; }
+function liveness(a){
+  const R = S.relay || {};
+  if (R.enabled && (R.running || []).includes(a.name)) return {on:true, run:true, label:'RUNNING ⚡'};
+  const manual = R.enabled && R.runners && R.runners[a.name] === false ? ' · MANUAL' : '';
+  const base = livenessBase(a);
+  return {...base, label: base.label + (a.name !== 'you' ? manual : '')};
+}
+function livenessBase(a){
+  if (!a.last_seen) return {on:false, label:'OFFLINE'};
+  const age = (Date.now() - Date.parse(a.last_seen))/1000;
+  if (age < 180) return {on:true, label:'ACTIVE'};
+  if (age < 3600) return {on:false, label:`IDLE ${Math.round(age/60)}M`};
+  if (age < 86400) return {on:false, label:`IDLE ${Math.round(age/3600)}H`};
+  return {on:false, label:`IDLE ${Math.round(age/86400)}D`};
+}
+
+function spawn(ev, delay){
+  const from = ev.agent === 'relay' ? 'core' : ev.agent;
+  let targets = ['core'];
+  if (ev.type === 'msg'){ const to = ev.to || 'all'; targets = to === 'all' ? agentNames() : [to]; }
+  const t0 = performance.now() + delay;
+  targets.filter(t => t !== from).forEach(to =>
+    packets.push({from, to, color: colorOf(ev.agent), t0, dur: 1700 + Math.random()*300, kind: ev.type}));
+}
+function packetPath(pk, t){
+  const A = pk.from === 'core' ? ORIGIN : electron(pk.from), B = pk.to === 'core' ? ORIGIN : electron(pk.to);
+  const M = {x: (A.x+B.x)/2, y: (A.y+B.y)/2, z: (A.z+B.z)/2};
+  let C;
+  if (pk.from === 'core' || pk.to === 'core') C = {x: M.x*1.2, y: M.y*1.2 - .15, z: M.z*1.2};
+  else {  // arc around the nucleus rather than through it
+    const l = Math.hypot(M.x, M.y, M.z);
+    C = l > .15 ? {x: M.x/l*.95, y: M.y/l*.95 - .2, z: M.z/l*.95} : {x: M.x, y: -.95, z: M.z};
+  }
+  const u = 1 - t;
+  return {x: u*u*A.x + 2*u*t*C.x + t*t*B.x, y: u*u*A.y + 2*u*t*C.y + t*t*B.y, z: u*u*A.z + 2*u*t*C.z + t*t*B.z};
+}
+
+let lastFrame = performance.now(), nucSpin = 0;
+function draw(now){
+  requestAnimationFrame(draw);
+  if (!W || !H) return;
+  const dt = Math.min(.05, (now - lastFrame)/1000); lastFrame = now;
+  const tx = pointer ? pointer.x : Math.sin(now/9000)*.3, ty = pointer ? pointer.y : Math.sin(now/13000)*.2, ease = Math.min(1, dt*2.4);
+  // Your rotation/pan/zoom, with a lighter mouse parallax sway on top.
+  const sway = pointer ? .45 : 1, fast = Math.min(1, dt*9);
+  cam.yaw += (view.yaw + tx*.8*sway - cam.yaw)*fast; cam.pitch += ((-.38 + view.pitch + ty*.5*sway) - cam.pitch)*fast;
+  cam.px += (view.panX + tx*.2*sway - cam.px)*ease; cam.py += (view.panY + ty*.14*sway - cam.py)*ease;
+  view.zoom += (view.tzoom - view.zoom)*Math.min(1, dt*8);
+  const k = unit();
+
+  ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+  const bg = ctx.createRadialGradient(W/2, H*.5, 10, W/2, H*.5, Math.max(W, H)*.75);
+  bg.addColorStop(0, '#150f33'); bg.addColorStop(.45, '#090a1a'); bg.addColorStop(1, '#030309');
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+  ctx.globalCompositeOperation = 'lighter';
+  glow(W*.28 + Math.sin(now/7000)*30 - cam.yaw*70, H*.32, Math.max(W, H)*.42, '#3b1f7a', .2);
+  glow(W*.74 + Math.cos(now/8000)*30 - cam.yaw*70, H*.7, Math.max(W, H)*.38, '#0f4a5a', .17);
+
+  for (const s of stars){   // far stars barely move, near bokeh swings: parallax
+    const p = project(s), tw = .5 + .5*Math.sin(now/900 + s.tw);
+    if (p.behind) continue;
+    if (s.z < 0) particle(p, s.s, s.c, .3*tw); else glow(p.x, p.y, s.s*p.f*2.2, s.c, .5*tw);
+  }
+
+  const items = [];
+  for (const n of agentNames()){
+    const a = agentInfo(n), L = liveness(a), c = colorOf(n), o = orbitOf(n);
+    theta[n] = (theta[n] ?? o.ph) + dt*(L.run ? 1.15 : L.on ? .42 : .13);
+    ctx.lineWidth = 1; ctx.strokeStyle = c; let prev = null;
+    for (let i = 0; i <= 120; i++){
+      const p = project(tilt({x: Math.cos(i/120*TAU)*o.r, y: 0, z: Math.sin(i/120*TAU)*o.r}, o.ax, o.az));
+      if (prev && !p.behind && !prev.behind){ ctx.globalAlpha = (L.on ? .07 : .035) + frontOf(p.z)*(L.on ? .34 : .14); ctx.beginPath(); ctx.moveTo(prev.x, prev.y); ctx.lineTo(p.x, p.y); ctx.stroke(); }
+      prev = p;
+    }
+    const w = electron(n), p = project(w), tr = trails[n] || (trails[n] = []);
+    tr.push(w); if (tr.length > 30) tr.shift();
+    items.push({z: p.z, draw: () => drawElectron(n, a, L, c, p, tr, now)});
+  }
+
+  const busy = (S.relay?.running || []).length, fl = flashes.core ? Math.max(0, 1 - (now - flashes.core)/800) : 0;
+  nucSpin += dt*(busy ? .6 : .22);
+  const breathe = 1 + .05*Math.sin(now/700) + fl*.3, c1 = Math.cos(nucSpin), s1 = Math.sin(nucSpin), c2 = Math.cos(nucSpin*.6), s2 = Math.sin(nucSpin*.6);
+  for (const q of nucleus){
+    const x = q.x*c1 + q.z*s1, z0 = -q.x*s1 + q.z*c1, y = q.y*c2 - z0*s2, z = q.y*s2 + z0*c2, b = breathe*(1 + .05*Math.sin(now/400 + q.ph));
+    const p = project({x: x*b, y: y*b, z: z*b});
+    items.push({z: p.z, draw: () => particle(p, q.s, q.c, .8)});
+  }
+
+  const claims = []; S.agents.forEach(a => a.claims.forEach(f => claims.push({f, a: a.name})));
+  const bad = new Set(S.conflicts.map(c => c.path)), nc = Math.min(claims.length, 60);
+  for (let i = 0; i < nc; i++){
+    const y = 1 - (i + .5)/nc*2, r = Math.sqrt(1 - y*y), th = i*2.399963 + now/5000, isBad = bad.has(claims[i].f);
+    const p = project({x: Math.cos(th)*r*.38, y: y*.3, z: Math.sin(th)*r*.38});
+    items.push({z: p.z, draw: () => particle(p, isBad ? 4.5 : 2.6, isBad ? COLORS.bad : colorOf(claims[i].a), isBad ? .55 + .45*Math.sin(now/120) : .9)});
+  }
+
+  for (let i = packets.length - 1; i >= 0; i--){
+    const pk = packets[i]; if (now < pk.t0) continue;
+    const t = (now - pk.t0)/pk.dur;
+    if (t >= 1){ ripples.push({w: packetPath(pk, 1), c: pk.color, t0: now}); flashes[pk.to] = now; packets.splice(i, 1); continue; }
+    const e = t < .5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2)/2, head = project(packetPath(pk, e));
+    items.push({z: head.z - 1, draw: () => {
+      for (let j = 16; j >= 0; j--) particle(project(packetPath(pk, Math.max(0, e - j*.015))), 3.3*(1 - j/18), pk.color, (1 - j/17)*.95);
+      ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = .85; ctx.fillStyle = pk.color; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      ctx.font = '600 9px "JetBrains Mono",monospace'; ctx.fillText(pk.kind.toUpperCase(), head.x + 9, head.y - 9);
+      ctx.globalCompositeOperation = 'lighter';
+    }});
+  }
+
+  items.sort((a, b) => b.z - a.z);   // far to near
+  for (const it of items) it.draw();
+
+  for (let i = ripples.length - 1; i >= 0; i--){
+    const r = ripples[i], t = (now - r.t0)/900; if (t >= 1){ ripples.splice(i, 1); continue; }
+    const p = project(r.w); ctx.strokeStyle = r.c; ctx.globalAlpha = (1 - t)*.9; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(p.x, p.y, (8 + t*48)*p.f, 0, TAU); ctx.stroke();
+  }
+  drawCoreLabel(now, k, fl);
+  ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+}
+
+function drawElectron(n, a, L, c, p, tr, now){
+  if (p.behind) return;
+  ctx.globalCompositeOperation = 'lighter';
+  for (let j = 0; j < tr.length; j++){ const q = project(tr[j]), f = j/tr.length; particle(q, 2.4*f, c, .45*f); }
+  const fl = flashes[n] ? Math.max(0, 1 - (now - flashes[n])/700) : 0, pulse = L.on ? (Math.sin(now/380) + 1)/2 : 0;
+  const base = Math.max(8, Math.min(16, unit()*.05));
+  particle(p, base*(1 + pulse*.25 + fl*.6), c, L.on ? 1 : .55);
+  glow(p.x, p.y, base*p.f*5.5*(1 + fl), c, .14 + pulse*.12 + fl*.3);
+  if (L.run){
+    const rr = base*p.f*2, r0 = now/220; ctx.strokeStyle = c; ctx.globalAlpha = .85; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(p.x, p.y, rr, r0, r0 + 1.4); ctx.stroke();
+    ctx.beginPath(); ctx.arc(p.x, p.y, rr, r0 + Math.PI, r0 + Math.PI + .8); ctx.stroke();
+  }
+  const fa = .4 + frontOf(p.z)*.6, ly = p.y + base*p.f*2.2 + 6;
+  ctx.globalCompositeOperation = 'source-over'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillStyle = c; ctx.globalAlpha = fa; ctx.shadowColor = c; ctx.shadowBlur = 10;
+  ctx.font = '600 12px Orbitron,sans-serif'; ctx.fillText((GLYPH[n] ? GLYPH[n] + ' ' : '') + n.toUpperCase(), p.x, ly);
+  ctx.shadowBlur = 0; ctx.font = '10px "JetBrains Mono",monospace'; ctx.globalAlpha = fa*.9;
+  ctx.fillText(`${L.label}${a.claims.length ? ` · ${a.claims.length} CLAIMED` : ''}`, p.x, ly + 16);
+  // Status only for electrons on the near side, so labels don't pile up over the nucleus (full text is in the side panel).
+  if (a.status && frontOf(p.z) > .5){ ctx.fillStyle = '#d3d9ff'; ctx.globalAlpha = fa*.6; ctx.fillText(a.status.length > 34 ? a.status.slice(0, 33) + '…' : a.status, p.x, ly + 30); }
+  ctx.globalCompositeOperation = 'lighter';
+}
+
+function drawCoreLabel(now, k, fl){
+  const p = project(ORIGIN);
+  if (p.behind) return;
+  const size = Math.round(Math.max(14, Math.min(64, k*.11)));
+  ctx.globalCompositeOperation = 'lighter'; glow(p.x, p.y, k*.6, COLORS.core, .2 + fl*.4);
+  ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.shadowColor = '#05030f'; ctx.shadowBlur = 14; ctx.fillStyle = '#f3efff';
+  ctx.font = `800 ${size}px Orbitron,sans-serif`; ctx.fillText(`Δ${S.changes.length}`, p.x, p.y);
+  ctx.font = '9px "JetBrains Mono",monospace'; ctx.globalAlpha = .75; ctx.fillText('REPO CORE', p.x, p.y + size*.9);
+  if (S.conflicts.length){ ctx.fillStyle = COLORS.bad; ctx.globalAlpha = 1; ctx.fillText(`⚠ ${S.conflicts.length} CONFLICT`, p.x, p.y + k*.5); }
+  ctx.shadowBlur = 0;
+}
+
+// ---------- DOM panels ----------
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function handoffTargets(a, L){
+  const R = S.relay || {};
+  if (!R.enabled || !R.runners || !(a.name in R.runners) || !(L.run || a.claims.length)) return [];
+  return Object.keys(R.runners).filter(n => n !== a.name && R.runners[n]);
+}
+function renderSide(){
+  const agents = S.agents.filter(a => a.name!=='you' || a.last_seen);
+  let h = `<h2>OPERATIVES <span>${agents.length}</span></h2>`;
+  h += agents.map(a => {
+    const L = liveness(a), c = colorOf(a.name);
+    return `<div class="card" style="--c:${c}"><div class="row"><span class="nm">${esc(a.name.toUpperCase())}</span>
+      <span class="st ${L.on?'on':''}">${L.label}</span></div>
+      ${a.status ? `<div class="tx">${esc(a.status)}</div>` : ''}
+      ${a.claims.length ? `<ul class="files">${a.claims.map(f=>`<li><span class="code">▸</span>${esc(f)}</li>`).join('')}</ul>` : ''}
+      <div class="cardbtns">
+      ${L.run ? `<button type="button" class="cardstop" data-stop="${esc(a.name)}">■ STOP ${esc(a.name.toUpperCase())}</button>` : ''}
+      ${handoffTargets(a, L).map(t => `<button type="button" class="cardhand" data-from="${esc(a.name)}" data-to="${esc(t)}"
+          title="Stop ${esc(a.name)} and give its current task and files to ${esc(t)}">⇄ HAND TO ${esc(t.toUpperCase())}</button>`).join('')}
+      </div></div>`;
+  }).join('');
+  h += `<h2>CONFLICTS <span class="${S.conflicts.length?'bad':''}">${S.conflicts.length}</span></h2>`;
+  h += S.conflicts.length
+    ? `<ul class="files">${S.conflicts.map(c=>`<li class="bad"><span class="code">⚠</span>${esc(c.path)}<span class="own">${esc(c.owners.join(' + ').toUpperCase())}</span></li>`).join('')}</ul>`
+    : `<div class="empty">no overlapping claims — lanes clear</div>`;
+  const ch = S.changes, shown = ch.slice(0, 80);
+  h += `<h2>REPO DELTA <span>${ch.length}</span></h2>`;
+  h += ch.length ? `<ul class="files">${shown.map(f => {
+      const o = f.owners.length ? f.owners : null;
+      const col = !o ? 'var(--dim)' : o.length>1 ? COLORS.bad : colorOf(o[0]);
+      return `<li><span class="code">${esc(f.code)}</span>${esc(f.path)}<span class="own" style="color:${col}">${o?esc(o.join('+').toUpperCase()):'UNCLAIMED'}</span></li>`;
+    }).join('')}${ch.length>shown.length?`<li class="empty">+${ch.length-shown.length} more</li>`:''}</ul>`
+    : `<div class="empty">working tree clean</div>`;
+  $('side').innerHTML = h;
+}
+
+let rendered = -1;
+function renderFeed(){
+  const feed = $('feed'), stick = feed.scrollTop + feed.clientHeight >= feed.scrollHeight - 30;
+  S.events.filter(e => e.seq > rendered).forEach(e => {
+    const d = document.createElement('div'); d.className = 'ev';
+    const c = colorOf(e.agent), t = new Date(e.ts);
+    const kc = e.type==='msg' ? colorOf(e.to||'all') : COLORS.core;
+    d.innerHTML = `<span class="t">${esc(isNaN(t)?'':t.toLocaleTimeString([], {hour12:false}))}</span>
+      <span class="a" style="color:${c}">${esc(String(e.agent).toUpperCase())}</span>
+      <span class="k" style="color:${kc}">${esc(e.type)}${e.type==='msg'?' →'+esc((e.to||'all').toUpperCase()):''}</span>
+      <span class="m">${esc(e.text)}${e.files?.length?` <span class="f">[${esc(e.files.join(', '))}]</span>`:''}</span>`;
+    const m = d.querySelector('.m');
+    if (e.attachments?.length){
+      const s = document.createElement('div'); s.className = 'shots';
+      s.innerHTML = e.attachments.map(a => `<a href="/${esc(a)}" target="_blank" rel="noopener" title="Open full size">
+        <img src="/${esc(a)}" alt="screenshot" loading="lazy"></a>`).join('');
+      d.appendChild(s);
+    }
+    const full = e.text_len || (e.text||'').length, lines = (e.text||'').split('\n').length;
+    if (full > 600 || lines > 6){
+      m.classList.add('clamp');
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'more';
+      b.textContent = `▾ show all (${full.toLocaleString()} chars)`;
+      b.onclick = async () => {
+        if (m.classList.contains('clamp')){
+          if (e.text_len && !m.dataset.full){
+            try { const ev2 = await (await fetch('/api/event?seq='+e.seq)).json(); m.firstChild.textContent = ev2.text; m.dataset.full = 1; } catch {}
+          }
+          m.classList.remove('clamp'); b.textContent = '▴ collapse';
+        } else { m.classList.add('clamp'); b.textContent = `▾ show all (${full.toLocaleString()} chars)`; }
+      };
+      d.appendChild(b);
+    }
+    feed.appendChild(d); rendered = e.seq;
+  });
+  while (feed.children.length > 300) feed.firstChild.remove();
+  if (!feed.children.length && !$('hint')){
+    feed.innerHTML = `<div id="hint" class="empty">no traffic yet — agents post with: python agent_bus.py post --agent claude --type status -- "booting"</div>`;
+  } else if (feed.children.length > 1) $('hint')?.remove();
+  if (stick) feed.scrollTop = feed.scrollHeight;
+}
+
+async function poll(){
+  try {
+    const r = await fetch('/api/state', {cache:'no-store'});
+    if (!r.ok) throw 0;
+    const next = await r.json();
+    if (S.root && next.root !== S.root){
+      // switched project: new log, so start the feed and animations fresh
+      $('feed').innerHTML = ''; rendered = -1; lastSeq = null; packets.length = 0;
+    }
+    const fresh = lastSeq === null
+      ? next.events.slice(-4)
+      : next.events.filter(e => e.seq > lastSeq);
+    S = next;
+    fresh.forEach((e,i) => spawn(e, i*320));
+    lastSeq = next.total - 1;
+    online = true; pollFails = 0;
+    renderSide(); renderFeed();
+  } catch {
+    // Local firewalls (e.g. Norton) occasionally reset loopback connections; only a run of
+    // failures means the monitor is really down.
+    pollFails++; online = pollFails < 3;
+  }
+  $('led').className = 'led' + (online ? ' ok' : '');
+  $('link').textContent = online ? 'UPLINK' : 'LINK LOST';
+  $('count').textContent = S.total; $('delta').textContent = S.changes.length;
+  if (S.root){
+    $('targetName').textContent = baseName(S.root) + (S.focus?.length ? ' · ' + S.focus.join(' ') : '');
+    $('target').title = S.root + ' (click to change)';
+  }
+  const R = S.relay || {}, auto = $('auto');
+  const busy = (R.running||[]).length;
+  auto.textContent = !R.enabled ? 'OFF' : R.paused ? 'PAUSED ▸ RESUME' : busy ? 'ENGAGED' : 'ARMED';
+  auto.style.color = !R.enabled ? '' : R.paused ? COLORS.bad : COLORS.chatgpt;
+  $('autoBtn').disabled = !R.enabled;
+  $('autoBtn').title = R.paused ? 'Autopilot is paused: click to resume automatic agent runs' : 'Click to pause automatic agent runs';
+  const sb = $('stopBtn');
+  sb.disabled = !R.enabled || (!busy && R.paused);
+  sb.classList.toggle('hot', !!busy);
+  sb.textContent = busy ? `■ STOP ${busy > 1 ? 'ALL' : R.running[0].toUpperCase()}` : '■ STOP';
+}
+
+// ---------- compose: big box + screenshots ----------
+const MAX_TEXT = 400000, MAX_IMAGES = 10, MAX_IMG = 15*1024*1024;
+let shots = []; // {name, data}
+const msgBox = $('msg');
+function grow(){ msgBox.style.height = 'auto'; msgBox.style.height = Math.max(76, Math.min(msgBox.scrollHeight + 2, innerHeight*.24)) + 'px'; }
+function meter(err){
+  const el = $('meter'), n = msgBox.value.length;
+  if (err){ el.textContent = err; el.className = 'meter bad'; return; }
+  const parts = [];
+  if (n) parts.push(`${n.toLocaleString()} chars · ~${Math.ceil(n/4).toLocaleString()} tokens`);
+  if (shots.length) parts.push(`${shots.length} screenshot${shots.length>1?'s':''}`);
+  el.textContent = parts.join(' · ') || 'up to ~100k tokens + 10 screenshots';
+  el.className = 'meter' + (n > MAX_TEXT ? ' bad' : '');
+}
+function renderTray(){
+  const t = $('tray'); t.hidden = !shots.length;
+  t.innerHTML = shots.map((s,i) => `<div class="shot"><img src="${s.data}" alt="${esc(s.name)}" title="${esc(s.name)}">
+    <button type="button" data-i="${i}" title="Remove">✕</button></div>`).join('');
+  meter();
+}
+$('tray').addEventListener('click', e => { const b = e.target.closest('button[data-i]'); if (b){ shots.splice(+b.dataset.i,1); renderTray(); }});
+function addFiles(files){
+  for (const f of files){
+    if (!/^image\/(png|jpe?g|gif|webp)$/.test(f.type)) { meter(`${f.name || 'file'}: only PNG, JPG, GIF or WebP`); continue; }
+    if (f.size > MAX_IMG) { meter(`${f.name}: over 15 MB`); continue; }
+    if (shots.length >= MAX_IMAGES) { meter(`max ${MAX_IMAGES} screenshots per message`); break; }
+    const slot = {name: f.name || `screenshot-${Date.now()}.png`, data: ''};
+    shots.push(slot);
+    const rd = new FileReader();
+    rd.onload = () => { slot.data = rd.result; renderTray(); };
+    rd.readAsDataURL(f);
+  }
+}
+msgBox.addEventListener('input', () => { grow(); meter(); });
+msgBox.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing){ e.preventDefault(); $('compose').requestSubmit(); }
+});
+msgBox.addEventListener('paste', e => {
+  const imgs = [...(e.clipboardData?.items || [])].filter(i => i.kind === 'file' && i.type.startsWith('image/')).map(i => i.getAsFile());
+  if (imgs.length){ e.preventDefault(); addFiles(imgs); }
+});
+$('attachBtn').addEventListener('click', () => $('fileIn').click());
+$('fileIn').addEventListener('change', e => { addFiles(e.target.files); e.target.value = ''; });
+const fw = $('feedwrap'), cmp = $('compose'); let dragDepth = 0;
+fw.addEventListener('dragenter', e => { if ([...e.dataTransfer.types].includes('Files')){ e.preventDefault(); dragDepth++; cmp.classList.add('drag'); }});
+fw.addEventListener('dragover', e => { if ([...e.dataTransfer.types].includes('Files')) e.preventDefault(); });
+fw.addEventListener('dragleave', () => { if (--dragDepth <= 0){ dragDepth = 0; cmp.classList.remove('drag'); }});
+fw.addEventListener('drop', e => { e.preventDefault(); dragDepth = 0; cmp.classList.remove('drag'); addFiles(e.dataTransfer.files); });
+
+$('compose').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const text = msgBox.value;
+  if (!text.trim() && !shots.length) return;
+  if (text.length > MAX_TEXT) return meter(`too long: ${text.length.toLocaleString()} / ${MAX_TEXT.toLocaleString()} chars`);
+  if (shots.some(s => !s.data)) return meter('still loading screenshots…');
+  const btn = $('sendBtn'); btn.disabled = true; btn.textContent = 'SENDING…';
+  try {
+    const r = await fetch('/api/post', {method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({to:$('to').value, text, images:shots})});
+    if (!r.ok){ let m = 'send failed'; try { m = (await r.json()).error || m; } catch {} throw new Error(m); }
+    msgBox.value = ''; shots = []; renderTray(); grow();
+  } catch (err){ meter(err.message || 'send failed: is the monitor still running?'); }
+  btn.disabled = false; btn.textContent = 'TRANSMIT';
+  poll();
+});
+meter();
+
+// ---------- stop / autopilot ----------
+async function api(path, body){
+  const r = await fetch(path, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body||{})});
+  if (!r.ok){ let m = 'request failed'; try { m = (await r.json()).error || m; } catch {} throw new Error(m); }
+  return r.json();
+}
+async function stopAgents(agent){
+  const b = $('stopBtn'); b.disabled = true; b.textContent = 'STOPPING…';
+  try { await api('/api/stop', {agent}); } catch (e) { alert(e.message); }
+  poll();
+}
+$('stopBtn').addEventListener('click', () => stopAgents('all'));
+$('side').addEventListener('click', async e => {
+  const s = e.target.closest('[data-stop]');
+  if (s){ s.disabled = true; return stopAgents(s.dataset.stop); }
+  const h = e.target.closest('[data-to]');
+  if (h){
+    h.disabled = true; h.textContent = 'HANDING OFF…';
+    try { await api('/api/handoff', {from: h.dataset.from, to: h.dataset.to}); } catch (err) { alert(err.message); }
+    poll();
+  }
+});
+$('autoBtn').addEventListener('click', async () => {
+  const R = S.relay || {};
+  try { await api('/api/autopilot', {on: !!R.paused}); } catch (e) { alert(e.message); }
+  poll();
+});
+
+// ---------- project picker ----------
+const baseName = p => String(p).split(/[\\/]/).filter(Boolean).pop() || p;
+const norm = p => String(p).replace(/[\\/]+$/,'').toLowerCase();
+let pick = {path:null, focus:new Set()};
+
+async function openPicker(){
+  $('modal').hidden = false; $('projErr').textContent = '';
+  $('recentList').innerHTML = $('foundList').innerHTML = '<span class="empty">scanning…</span>';
+  let data = {recent:[], found:[], current:S.root, focus:S.focus||[]};
+  try { data = await (await fetch('/api/projects', {cache:'no-store'})).json(); } catch {}
+  const recent = data.recent || [];
+  const found = (data.found || []).filter(f => !recent.some(r => norm(r)===norm(f)));
+  const item = p => `<button type="button" class="pitem" data-path="${esc(p)}"><b>${esc(baseName(p))}</b>
+      <span>${esc(p)}</span>${norm(p)===norm(data.current)?'<em>● CURRENT</em>':''}</button>`;
+  $('recentList').innerHTML = recent.length ? recent.map(item).join('') : '<span class="empty">none yet</span>';
+  $('foundHead').hidden = $('foundList').hidden = !found.length;
+  $('foundList').innerHTML = found.map(item).join('');
+  selectProject(data.current, data.focus || []);
+}
+function closePicker(){ $('modal').hidden = true; }
+
+async function selectProject(path, focus=[]){
+  if (!path) return;
+  pick = {path, focus:new Set(focus.map(f => f.replace(/\/$/,'')))};
+  $('pathIn').value = path; $('projErr').textContent = '';
+  document.querySelectorAll('.pitem').forEach(b => b.classList.toggle('sel', norm(b.dataset.path)===norm(path)));
+  $('focusList').innerHTML = '<span class="empty">loading folders…</span>';
+  let folders = [];
+  try { folders = (await (await fetch('/api/folders?root='+encodeURIComponent(path))).json()).folders || []; } catch {}
+  if (pick.path !== path) return; // user picked something else meanwhile
+  $('focusList').innerHTML = folders.length
+    ? folders.map(f => `<button type="button" class="chip ${pick.focus.has(f)?'on':''}" data-f="${esc(f)}">${esc(f)}/</button>`).join('')
+    : '<span class="empty">no sub-folders (or folder not found)</span>';
+  summarize();
+}
+function summarize(){
+  $('projSum').textContent = pick.path
+    ? `${baseName(pick.path)} · ${pick.focus.size ? [...pick.focus].map(f=>f+'/').join(' ') : 'whole project'}` : '';
+}
+
+$('target').addEventListener('click', openPicker);
+$('cancelBtn').addEventListener('click', closePicker);
+$('modal').addEventListener('click', e => { if (e.target === $('modal')) closePicker(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('modal').hidden) closePicker(); });
+['recentList','foundList'].forEach(id => $(id).addEventListener('click', e => {
+  const b = e.target.closest('.pitem'); if (b) selectProject(b.dataset.path);
+}));
+$('focusList').addEventListener('click', e => {
+  const c = e.target.closest('.chip'); if (!c) return;
+  const f = c.dataset.f; pick.focus.has(f) ? pick.focus.delete(f) : pick.focus.add(f);
+  c.classList.toggle('on'); summarize();
+});
+$('pathIn').addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); selectProject($('pathIn').value.trim().replace(/^"|"$/g,'')); }});
+$('pathIn').addEventListener('change', () => { const v = $('pathIn').value.trim().replace(/^"|"$/g,''); if (v && v !== pick.path) selectProject(v); });
+$('browseBtn').addEventListener('click', async () => {
+  const b = $('browseBtn'); b.disabled = true; b.textContent = 'PICKER OPEN…';
+  $('projErr').textContent = '';
+  try {
+    const r = await (await fetch('/api/browse', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'})).json();
+    if (r.path) selectProject(r.path);
+  } catch { $('projErr').textContent = 'Could not open the folder picker. Paste the path instead.'; }
+  b.disabled = false; b.textContent = '📁 BROWSE…';
+});
+$('engageBtn').addEventListener('click', async () => {
+  const path = $('pathIn').value.trim().replace(/^"|"$/g,'') || pick.path;
+  if (!path){ $('projErr').textContent = 'Pick a project first.'; return; }
+  const b = $('engageBtn'); b.disabled = true;
+  try {
+    const r = await fetch('/api/switch', {method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({root:path, focus:norm(path)===norm(pick.path) ? [...pick.focus] : []})});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Switch failed');
+    closePicker(); poll();
+  } catch (err) { $('projErr').textContent = err.message; }
+  b.disabled = false;
+});
+
+setInterval(() => { $('clock').textContent = new Date().toLocaleTimeString([], {hour12:false}); }, 1000);
+setInterval(poll, 1500);
+setInterval(renderSide, 15000); // keep IDLE timers fresh
+poll(); resize(); requestAnimationFrame(draw);
+})();
+</script>
+</body>
+</html>

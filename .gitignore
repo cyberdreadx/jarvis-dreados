@@ -21,3 +21,14 @@ launcher/norton-review.txt
 
 # Release builds
 dist/
+
+# Agent Bus runtime state
+.agents/log.jsonl
+.agents/.read_*
+.agents/.relay_*
+.agents/.session_*
+.agents/runs/
+.agents/projects.json
+.agents/.autopilot_paused
+.agents/attachments/
+.agents/_claude_state.json

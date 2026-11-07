@@ -1,4 +1,4 @@
-import tempfile,unittest
+import json,tempfile,unittest
 from pathlib import Path
 from unittest.mock import patch
 import build_workspace as w
@@ -18,6 +18,15 @@ class WorkspaceTests(unittest.TestCase):
  def test_path_boundaries(self):
   for name in ['../secret','C:/secret','a/../../secret','.env','.env.local','a/.git/config','a:stream','CON.txt','file.','/abs','a//b','.dreados-history/test']:
    with self.subTest(name=name),self.assertRaises(ValueError):w.safe_path(self.root,name)
+ def test_large_javascript_is_viewable_without_allowing_large_writes(self):
+  content='// library\n'*(w.LIMIT//10)
+  (self.root/'library.js').write_text(content,encoding='utf-8',newline='')
+  result=w.read(self.root,'library.js')
+  self.assertEqual(result['content'],content)
+  self.assertTrue(result['readonly'])
+  with self.assertRaises(ValueError):w.save(self.root,'library.js',content,result['revision'])
+  with patch.object(w,'VIEW_LIMIT',10):
+   with self.assertRaisesRegex(ValueError,'viewer limit'):w.read(self.root,'library.js')
  def test_tree_and_preview(self):
   w.save(self.root,'index.html','<h1>Hello</h1>',None,create=True)
   (self.root/'node_modules').mkdir();(self.root/'node_modules/private.js').write_text('secret')
@@ -48,6 +57,38 @@ class WorkspaceTests(unittest.TestCase):
   with patch.object(bridge,'request',return_value={'healthy':True,'version':'test'}),patch.object(bridge.subprocess,'Popen') as launch:
    self.assertTrue(bridge.start()['healthy'])
    launch.assert_not_called()
+ def _stale_env(self,status):
+  pid_file=self.root/'server.pid'
+  calls=[{'healthy':True},status,{'healthy':True,'version':'new'}]
+  def respond(path,*a,**k):return calls.pop(0)
+  return pid_file,respond
+ def test_connect_restarts_opencode_that_predates_plugin_changes(self):
+  pid_file,respond=self._stale_env({})
+  with patch.object(bridge,'PID_FILE',pid_file),patch.object(bridge,'request',side_effect=respond),\
+       patch.object(bridge,'_stale_pid',return_value=4242),patch.object(bridge,'_kill') as kill,\
+       patch.object(bridge.socket,'create_connection',side_effect=OSError),patch.object(bridge.subprocess,'Popen') as launch:
+   launch.return_value.poll.return_value=None;launch.return_value.pid=999
+   self.assertEqual(bridge.start(restart_stale=True)['version'],'new')
+   kill.assert_called_once_with(4242);launch.assert_called_once()
+   self.assertEqual(json.loads(pid_file.read_text())['pid'],999)
+ def test_connect_never_restarts_opencode_while_a_task_runs(self):
+  pid_file,respond=self._stale_env({'s1':{'type':'busy'}})
+  with patch.object(bridge,'PID_FILE',pid_file),patch.object(bridge,'request',side_effect=respond),\
+       patch.object(bridge,'_stale_pid',return_value=4242),patch.object(bridge,'_kill') as kill,patch.object(bridge.subprocess,'Popen') as launch:
+   self.assertTrue(bridge.start(restart_stale=True)['healthy'])
+   kill.assert_not_called();launch.assert_not_called()
+ def test_stale_pid_only_when_plugins_changed_after_launch(self):
+  pid_file=self.root/'server.pid'
+  with patch.object(bridge,'PID_FILE',pid_file),patch.object(bridge,'_code_stamp',return_value=100.0),\
+       patch.object(bridge.subprocess,'run') as run:
+   run.return_value.stdout='opencode.exe  4242 Console'
+   self.assertIsNone(bridge._stale_pid())  # no record of a launch: leave it alone
+   pid_file.write_text(json.dumps({'pid':4242,'stamp':100.0}))
+   self.assertIsNone(bridge._stale_pid())  # nothing changed since launch
+   pid_file.write_text(json.dumps({'pid':4242,'stamp':50.0}))
+   self.assertEqual(bridge._stale_pid(),4242)  # plugins changed after launch
+   run.return_value.stdout='notepad.exe 4242 Console'
+   if bridge.os.name=='nt':self.assertIsNone(bridge._stale_pid())  # PID reused by another program
  def test_start_does_not_launch_over_occupied_port(self):
   with patch.object(bridge,'request',side_effect=ValueError('health failed')),patch.object(bridge.socket,'create_connection'),patch.object(bridge.time,'sleep'),patch.object(bridge.subprocess,'Popen') as launch:
    with self.assertRaisesRegex(ValueError,'already occupied'):bridge.start()

@@ -53,6 +53,17 @@ def message_text(item):
     # Old search hits remain in storage; avoid repeatedly sending entire source lists.
     return content
 
+def usage(chat, draft='', attachments=None, provider=None):
+    """Read-only estimate: never compact or call inference to draw a meter."""
+    limit,detected=context_limit(provider)
+    saved=chat.get('summary') or {}
+    instructions=providers.SYSTEM+'\n'+chat.get('personality','')+'\n'+chat.get('memory','')
+    if saved.get('content'): instructions+=MEMORY_PREFIX+saved['content']
+    used=estimate(instructions)+estimate(draft)+64
+    used+=sum(estimate(message_text(m))+8 for m in chat.get('messages',[]) if m['id']>saved.get('through_id',0))
+    used+=sum(estimate(a.get('text','')) if a.get('type')=='text' else 4096 for a in (attachments or []))
+    return {'limit':limit,'used':used,'detected':detected,'label':'Estimated context','compacted':bool(saved.get('content')),'reserved':1200}
+
 def cost(items):
     return sum(estimate(item['content'])+8 for item in items)
 

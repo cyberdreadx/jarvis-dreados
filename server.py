@@ -126,9 +126,14 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Content-Length', str(len(body)))
         self.send_header('Cache-Control', 'no-store')
         self.send_header('X-Content-Type-Options', 'nosniff')
-        policy="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data: https:; media-src 'self' blob: https:; frame-src 'self' https://www.openstreetmap.org; frame-ancestors 'none'; base-uri 'none'"
+        policy="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data: https:; media-src 'self' blob: https:; frame-src 'self' https://www.openstreetmap.org http://localhost:* http://127.0.0.1:*; frame-ancestors 'none'; base-uri 'none'"
         if getattr(self, "style_nonce", None):policy=policy.replace("style-src 'self'", f"style-src 'self' 'nonce-{self.style_nonce}'")
-        if preview:policy="sandbox allow-scripts; default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'"
+        if preview:
+            policy="sandbox allow-scripts; default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'"
+            # Sandboxed documents have an opaque (null) origin. ES module imports
+            # require CORS even for sibling files. Grant it only to ticketed assets;
+            # keep the frame opaque and never allow credentials or API access.
+            self.send_header('Access-Control-Allow-Origin','null')
         self.send_header('Content-Security-Policy', policy)
         self.send_header('Referrer-Policy','no-referrer')
         self.end_headers()
@@ -207,6 +212,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/api/status':
             return self.send(200, {'token': TOKEN, 'platform': os.name, 'search':web_search.status(), 'location':location_service.status(), **providers.status()})
         files = {'/vendor/code-editor.js': ('vendor/code-editor.js','text/javascript; charset=utf-8'), '/microphone.js': ('microphone.js','text/javascript; charset=utf-8'),'/models.js': ('models.js','text/javascript; charset=utf-8'),'/vendor/prettier/standalone.js': ('vendor/prettier/standalone.js', 'text/javascript; charset=utf-8'), '/vendor/prettier/plugins/html.js': ('vendor/prettier/plugins/html.js', 'text/javascript; charset=utf-8'), '/vendor/prettier/plugins/postcss.js': ('vendor/prettier/plugins/postcss.js', 'text/javascript; charset=utf-8'), '/vendor/prettier/plugins/babel.js': ('vendor/prettier/plugins/babel.js', 'text/javascript; charset=utf-8'), '/vendor/prettier/plugins/estree.js': ('vendor/prettier/plugins/estree.js', 'text/javascript; charset=utf-8'), '/vendor/prettier/plugins/typescript.js': ('vendor/prettier/plugins/typescript.js', 'text/javascript; charset=utf-8'), '/vendor/prettier/plugins/markdown.js': ('vendor/prettier/plugins/markdown.js', 'text/javascript; charset=utf-8'), '/vendor/leaflet.js': ('vendor/leaflet.js','text/javascript; charset=utf-8'), '/vendor/leaflet.css': ('vendor/leaflet.css','text/css; charset=utf-8'), '/situation.js': ('situation.js','text/javascript; charset=utf-8'), '/build.js': ('build.js','text/javascript; charset=utf-8'), '/voice.js': ('voice.js','text/javascript; charset=utf-8'), '/library.js': ('library.js','text/javascript; charset=utf-8'), '/': ('index.html', 'text/html; charset=utf-8'), '/app.js': ('app.js', 'text/javascript; charset=utf-8'), '/core.js': ('core.js', 'text/javascript; charset=utf-8'), '/studio.js': ('studio.js', 'text/javascript; charset=utf-8'), '/style.css': ('style.css', 'text/css; charset=utf-8')}
+        files['/context.js'] = ('context.js', 'text/javascript; charset=utf-8')
         files['/media.js'] = ('media.js', 'text/javascript; charset=utf-8')
         if path not in files:
             return self.send(404, {'error': 'Not found.'})
@@ -222,7 +228,7 @@ class Handler(BaseHTTPRequestHandler):
         if not self.valid_host() or not self.valid_origin(origin) or not secrets.compare_digest(self.headers.get('X-Jarvis-Token', ''), TOKEN):
             self.discard_body()
             return self.send(403, {'error': 'Refresh DreadOS AI to reconnect securely.'})
-        if self.path not in ('/api/media', '/api/chat-tool-run', '/api/chat-cancel', '/api/transcribe', '/api/lm-studio', '/api/map', '/api/location', '/api/build', '/api/speech', '/api/search-settings', '/api/library', '/api/chat', '/api/settings', '/api/local-models', '/api/create', '/api/mcp/add', '/api/mcp/connect', '/api/mcp/remove', '/api/mcp/auth', '/api/mcp/call'):
+        if self.path not in ('/api/context', '/api/media', '/api/chat-tool-run', '/api/chat-cancel', '/api/transcribe', '/api/lm-studio', '/api/map', '/api/location', '/api/build', '/api/speech', '/api/search-settings', '/api/library', '/api/chat', '/api/settings', '/api/local-models', '/api/create', '/api/mcp/add', '/api/mcp/connect', '/api/mcp/remove', '/api/mcp/auth', '/api/mcp/call'):
             self.discard_body()
             return self.send(404, {'error': 'Not found.'})
         try:
@@ -232,6 +238,13 @@ class Handler(BaseHTTPRequestHandler):
                     self.rfile.read(min(length, 13000001))
                 return self.send(413, {'error': 'Message is too large.'})
             data = json.loads(self.rfile.read(length))
+            if self.path == '/api/context':
+                try:
+                    if not isinstance(data,dict) or not isinstance(data.get('draft',''),str): raise ValueError('Invalid context request.')
+                    chat=chat_store.get(data['chat_id']) if data.get('chat_id') else {}
+                    attachments=providers.validate_attachments(data.get('attachments',[]))
+                    return self.send(200,context_memory.usage(chat,data.get('draft','')[:8000],attachments,data.get('provider')))
+                except ValueError as error: return self.send(400,{'error':str(error)})
             if self.path == '/api/media':
                 try: return self.send(200, media_library.action(data))
                 except ValueError as error: return self.send(400, {'error': str(error)})

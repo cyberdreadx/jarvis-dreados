@@ -4,6 +4,7 @@ Credentials and OAuth state live in memory. No tools run during discovery.
 """
 import secure_settings
 import gltch_runner
+import builtin_tools
 import base64
 import hashlib
 import http.client
@@ -102,9 +103,15 @@ def restore_settings():
     threading.Thread(target=reconnect, daemon=True).start()
 
 
+# Built-in services run inside DreadOS: always connected, no network, no credits.
+BUILTIN = {builtin_tools.SERVICE_ID: {'id': builtin_tools.SERVICE_ID, 'name': builtin_tools.SERVICE_NAME,
+                                      'url': 'builtin:tools', 'status': 'connected', 'error': ''}}
+
+
 def public_connections():
     with _lock:
-        return [{k: value[k] for k in ('id', 'name', 'url', 'status', 'tools', 'error')} for value in _connections.values()]
+        return [{k: value[k] for k in ('id', 'name', 'url', 'status', 'tools', 'error')} for value in _connections.values()] + \
+               [dict(c, tools=builtin_tools.tools()) for c in BUILTIN.values()]
 
 
 def add(data):
@@ -222,6 +229,8 @@ def _result(value):
 
 
 def connect(ident):
+    if ident in BUILTIN:
+        return {'connections': public_connections()}  # always connected
     conn = _get(ident)
     with conn['rpc_lock']:
         conn.update(session='', tools=[], error='', status='not_connected', protocol='2025-11-25')
@@ -257,6 +266,11 @@ def connect(ident):
 
 
 def call(data):
+    if data.get('id') in BUILTIN:
+        name, args = data.get('tool'), data.get('arguments')
+        if not isinstance(args, dict) or name not in [tool['name'] for tool in builtin_tools.tools()]:
+            raise MCPError('Choose an available tool and enter its fields.')
+        return {'result': builtin_tools.call(name, args), 'connection': BUILTIN[data['id']]['name'], 'tool': name}
     conn = _get(data.get('id'))
     name = data.get('tool')
     args = data.get('arguments')
@@ -270,6 +284,8 @@ def call(data):
 
 
 def remove(ident):
+    if ident in BUILTIN:
+        raise MCPError(f'{builtin_tools.SERVICE_NAME} is built in. It uses no network or credits, so there is nothing to remove.')
     with _lock:
         conn = _connections.pop(ident, None)
         if conn and conn.get('runner'): conn['runner'].close()
