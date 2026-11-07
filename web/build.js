@@ -31,7 +31,14 @@ function renderBuildReasoning(part,expanded,existing){
  const pre=document.createElement('pre');pre.textContent=part.text.trim();details.append(label,pre);return details;
 }
 function isOfflineDocsTool(part){return part?.type==='tool'&&/^offline_docs[_.:]search_docs$/.test(part.tool||'');}
+// Commands in a sandboxed project are wrapped by opencode-plugins/sandbox.mjs; show the original.
+function sandboxedCommand(text){
+ const m=/sandbox\.py"?\s+run\s+([A-Za-z0-9+/=]+)\s*$/.exec(String(text||''));if(!m)return null;
+ try{const data=JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(m[1]),c=>c.charCodeAt(0))));return typeof data.c==='string'?data.c:null;}catch{return null;}
+}
 function buildToolLabel(part){
+ const boxed=part.tool==='bash'&&sandboxedCommand(part.state?.input?.command);
+ if(boxed)return '🔒 sandbox · '+boxed.split('\n')[0].slice(0,120)+' · '+part.state.status;
  if(part.tool==='preview_check_preview')return ({pending:'Preparing preview check',running:'Checking preview',completed:'Preview captured · desktop + mobile',error:'Preview capture failed'}[part.state?.status]||'Preview check');
  if(part.tool==='site_tools_audit_site')return ({pending:'Preparing site audit',running:'Auditing site',completed:'Site audit complete',error:'Site audit failed'}[part.state?.status]||'Site audit');
  if(isOfflineDocsTool(part)){
@@ -184,8 +191,8 @@ async function switchBuildProject(name){
  resetBuildTerminalApproval();
  if(window.showContextMeter)showContextMeter('build-context-meter',null);
  buildEpoch++;buildPolling=false;buildMessagesSnapshot='';buildPermissionsSnapshot='';clearInterval(buildTimer);resetBuildTaskTimer();buildProject=name;buildImages=[];renderBuildImages();buildFiles=[];buildBuffers.clear();buildFile='';displayBuildFile();clearTimeout(buildLiveTimer);buildPreviewRequest++;$('build-preview').removeAttribute('src');$('build-preview-status').textContent='Choose Preview to load this project.';$('build-output').replaceChildren();$('build-permissions').replaceChildren();$('build-recovery').hidden=true;$('build-diff').textContent='No changes loaded.';$('build-session').replaceChildren(new Option('Choose a session',''));
- renderBuildDev(null);
- if(name){await refreshBuildFiles();if(!$('ide-preview-panel').hidden)await refreshBuildPreview();await loadBuildSessions();refreshBuildDev();}
+ renderBuildDev(null);renderBuildSandbox(null);
+ if(name){refreshBuildSandbox();await refreshBuildFiles();if(!$('ide-preview-panel').hidden)await refreshBuildPreview();await loadBuildSessions();refreshBuildDev();}
 }
 let buildConnecting=false;
 $('connect-build').onclick=()=>buildAction(async()=>{
@@ -246,7 +253,7 @@ function renderBuildPermissions(permissions,epoch,project,session){
  for(const [key,state] of replies)if(!keys.has(key)&&!state.submitting)replies.delete(key);
  for(const pending of permissions){
   const box=document.createElement('div'),description=document.createElement('p'),error=document.createElement('p'),buttons=[];
-  box.className='search-result';description.textContent='Permission: '+pending.permission+'\n'+(pending.patterns||[]).join('\n');error.setAttribute('role','alert');box.append(description);
+  box.className='search-result';description.textContent='Permission: '+pending.permission+'\n'+(pending.patterns||[]).map(p=>{const c=sandboxedCommand(p);return c?'🔒 In sandbox: '+c:p;}).join('\n');error.setAttribute('role','alert');box.append(description);
   const key=keyFor(pending),state=replies.get(key)||{submitting:false,accepted:false,failure:''};replies.set(key,state);state.buttons=buttons;state.error=error;error.textContent=state.failure;
   for(const [label,reply] of [['Allow once','once'],['Allow '+pending.permission+' this session','session'],['Reject','reject']]){
    const button=document.createElement('button');button.className='quiet';button.textContent=label;button.disabled=state.submitting||state.accepted;
@@ -283,7 +290,7 @@ async function pollBuild(){
    const article=document.createElement('article');article.className='message';article.dataset.role=message.info.role;const title=document.createElement('div');title.className='eyebrow';title.textContent=message.info.role==='assistant'?'DreadOS AI':message.info.role==='user'?'You':message.info.role;article.append(title);
    if(message.info.finish==='length'){const notice=document.createElement('p');notice.className='build-continuity';notice.textContent='Response hit the output limit. An incomplete tool call cannot save files; continue with smaller edits.';article.append(notice);}
    if(message.info.error){const p=document.createElement('p');const raw=message.info.error.data?.message||message.info.error.name;p.textContent=isBuildContextOverflow(message.info.error)?'The coding request exceeded the model context window. Use Start fresh session below to prepare a short handoff. Review it before sending; your original chat and project files are preserved.':/failed to decode|Engine protocol predict/i.test(raw)?'The local model failed while generating. Stop any active request. Retry once; if it repeats, reload the model in LM Studio. Your files and chat are preserved.':raw;article.append(p);}
-   for(const part of message.parts){if(part.type==='file'&&/^image\/(png|jpeg|webp)$/.test(part.mime)&&/^data:image\/(png|jpeg|webp);base64,/.test(part.url||'')){const img=document.createElement('img');img.className='build-chat-image';img.src=part.url;img.alt=part.filename||'Attached screenshot';img.loading='lazy';article.append(img);}else if(part.type==='compaction'){const p=document.createElement('p');p.className='build-continuity';p.textContent='Context handoff · summarizing earlier work for continuation';article.append(p);}else if(part.type==='reasoning'&&part.text?.trim()){article.append(renderBuildReasoning(part,expanded,existing));}else if(part.type==='text'){if(message.info.role==='assistant'&&window.renderBuildMarkdown)article.append(renderBuildMarkdown(part.text));else{const p=document.createElement('p');p.textContent=part.text;article.append(p);}}else if(part.type==='tool'){const details=document.createElement('details');details.className='ide-tool';details.dataset.part=part.id;details.open=expanded.has(part.id);const label=document.createElement('summary');label.textContent=buildToolLabel(part);if(isOfflineDocsTool(part))details.classList.add('ide-tool-offline-docs');const pre=document.createElement('pre');pre.textContent=part.state.output||part.state.error||JSON.stringify(part.state.input||{},null,2);details.append(label,pre);article.append(details);}}
+   for(const part of message.parts){if(part.type==='file'&&/^image\/(png|jpeg|webp)$/.test(part.mime)&&/^data:image\/(png|jpeg|webp);base64,/.test(part.url||'')){const img=document.createElement('img');img.className='build-chat-image';img.src=part.url;img.alt=part.filename||'Attached screenshot';img.loading='lazy';article.append(img);}else if(part.type==='compaction'){const p=document.createElement('p');p.className='build-continuity';p.textContent='Context handoff · summarizing earlier work for continuation';article.append(p);}else if(part.type==='reasoning'&&part.text?.trim()){article.append(renderBuildReasoning(part,expanded,existing));}else if(part.type==='text'){if(message.info.role==='assistant'&&window.renderBuildMarkdown)article.append(renderBuildMarkdown(part.text));else{const p=document.createElement('p');p.textContent=part.text;article.append(p);}}else if(part.type==='tool'){const details=document.createElement('details');details.className='ide-tool';details.dataset.part=part.id;details.open=expanded.has(part.id);const label=document.createElement('summary');label.textContent=buildToolLabel(part);if(isOfflineDocsTool(part))details.classList.add('ide-tool-offline-docs');const pre=document.createElement('pre'),boxedInput=sandboxedCommand(part.state.input?.command);pre.textContent=part.state.output||part.state.error||(boxedInput?'$ '+boxedInput:JSON.stringify(part.state.input||{},null,2));details.append(label,pre);article.append(details);}}
    output.append(article);
  }
  if(!data.messages.length){const p=document.createElement('p');p.className='ide-empty';p.textContent='Ask OpenCode to create, explain, or improve your project.';output.append(p);}
@@ -585,3 +592,30 @@ $('capture-build-preview').onclick=()=>buildAction(async()=>{
   $('build-preview-status').textContent='Desktop + mobile captured · screenshots attached. Send to ask AI to review.';
  }finally{buildBusy=false;buildPreviewCapturing=false;button.disabled=false;if(epoch===buildEpoch)setBuildOrb(buildAgentBusy?'thinking':'idle');}
 });
+
+// Docker sandbox for this project's terminal commands and dev server.
+let buildSandboxBusy=false;
+function renderBuildSandbox(info){
+ const box=$('build-sandbox'),net=$('build-sandbox-net'),label=$('build-sandbox-status');
+ box.disabled=buildSandboxBusy||!info;net.disabled=buildSandboxBusy||!info?.enabled;
+ box.checked=!!info?.enabled;net.checked=info?info.network!==false:true;$('build-sandbox-net-row').hidden=!info?.enabled;
+ const on=!!info?.enabled;
+ $('build-terminal-warning').textContent=on?'For this session only. Commands run inside this project\'s Docker sandbox: they can only see this project folder'+(info.network===false?' and have no internet.':', can use the internet, and can\'t touch the rest of your PC.'):'For this session only. Commands run with your PC permissions and can modify files outside the project, install software or access the network. This is not a sandbox.';
+ if(!info){label.textContent='';return;}
+ label.textContent=!info.installed?'Docker is not installed · install Docker Desktop to sandbox commands':!info.running?'Docker is not running · start Docker Desktop to use the sandbox':info.error?info.error:info.downloading?'Downloading the sandbox (one time, about 400 MB)…':on?('Linux container · only this project at /work'+(info.network===false?' · no internet (dev server off)':'')):'Commands run directly on this PC';
+}
+async function refreshBuildSandbox(){
+ const project=$('build-project').value;if(!project){renderBuildSandbox(null);return;}
+ try{const info=await buildRequest('sandbox_status');if(project===$('build-project').value)renderBuildSandbox(info);if(info.downloading)setTimeout(()=>{if(project===$('build-project').value)refreshBuildSandbox();},4000);}
+ catch(error){$('build-sandbox-status').textContent=error.message;}
+}
+async function setBuildSandbox(){
+ const project=$('build-project').value;if(!project||buildSandboxBusy)return;
+ buildSandboxBusy=true;$('build-sandbox-status').textContent='Updating sandbox…';
+ let failure='';
+ try{await buildRequest('sandbox_set',{enabled:$('build-sandbox').checked,network:$('build-sandbox-net').checked});}
+ catch(error){failure=error.message;}
+ finally{buildSandboxBusy=false;await refreshBuildSandbox();if(failure)$('build-sandbox-status').textContent=failure;}
+}
+$('build-sandbox').onchange=setBuildSandbox;
+$('build-sandbox-net').onchange=setBuildSandbox;

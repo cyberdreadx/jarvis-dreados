@@ -24,6 +24,7 @@ import build_providers
 import knowledge_library
 import preview_capture
 import dev_server
+import sandbox
 ROOT=Path(__file__).resolve().parent
 STATE=ROOT/'data/opencode'
 PROJECTS=ROOT/'data/build-projects'
@@ -166,7 +167,8 @@ def configure_model(name=None):
         url,relay_key=build_providers.relay_url(selected)
         options={'baseURL':url,'apiKey':relay_key}
     config=json.loads((ROOT/'opencode.config.json').read_text())
-    config['plugin']=[*config.get('plugin',[]),(ROOT/'opencode-plugins/webfetch-defaults.mjs').as_uri()]
+    # sandbox.mjs runs last so it wraps the command after other plugins' rewrites.
+    config['plugin']=[*config.get('plugin',[]),(ROOT/'opencode-plugins/webfetch-defaults.mjs').as_uri(),(ROOT/'opencode-plugins/sandbox.mjs').as_uri()]
     python=ROOT/('.venv-voice/Scripts/python.exe' if os.name=='nt' else '.venv-voice/bin/python')
     config.setdefault('mcp',{})['offline_docs']={'type':'local','command':[str(python) if python.exists() else sys.executable,'-X','utf8',str(ROOT/'knowledge_library.py'),'mcp'],'enabled':True}
     config['permission']['offline_docs_search_docs']='allow'
@@ -251,6 +253,15 @@ def _action(data):
         return {'score':result['score'],'counts':result['counts'],'report':report['content'][0]['text']}
     if verb=='dev_start':return dev_server.start(folder,name)
     if verb=='dev_stop':return dev_server.stop()
+    if verb=='sandbox_status':return sandbox.status(folder)
+    if verb=='sandbox_set':
+        if not isinstance(data.get('enabled'),bool):raise ValueError('Choose whether to use the sandbox.')
+        info=sandbox.status()
+        if data['enabled'] and not info['installed']:raise ValueError('Docker is not installed. Install Docker Desktop, start it, then turn the sandbox on.')
+        if data['enabled'] and not info['running']:raise ValueError('Docker is not running. Start Docker Desktop, then try again.')
+        if dev_server.status()['project']==name and dev_server.status()['status'] in ('installing','starting','running'):
+            raise ValueError('Stop the dev server before changing the sandbox.')
+        return sandbox.set_project(folder,data['enabled'],data.get('network') is not False)
     if verb=='dev_status':
         info=dev_server.status()
         try:info['script_available']=dev_server.script_for(folder)
@@ -279,7 +290,9 @@ def _action(data):
         selected_model=configure_model(name)
         if images and not selected_model['vision']:
             raise ValueError('Select a vision-capable model in Build AI settings (or Models for LM Studio) to use screenshots. Your attachments have not been sent.')
-        prompt='DreadOS project directory: '+str(folder.resolve())+'\nUse absolute file paths inside this directory. The Assistant chat is separate; use PROJECT_BRIEF.md if present.\n\nUser request:\n'+prompt
+        sandboxed=sandbox.setting(folder)
+        shell_note=('\nTerminal commands run in a Linux Docker sandbox, not on Windows: write POSIX sh commands (ls, cat, rm), not PowerShell. The project is mounted there at /work and is the only folder visible; the bash tool\'s working directory maps to it. Node 22, npm, git, python3 and curl are available; there is no sudo or apt. '+('Internet is on.' if sandboxed['network'] else 'Internet is off: npm install and downloads will fail, so do not retry them.')) if sandboxed else ''
+        prompt='DreadOS project directory: '+str(folder.resolve())+'\nUse absolute file paths inside this directory. The Assistant chat is separate; use PROJECT_BRIEF.md if present.'+shell_note+'\n\nUser request:\n'+prompt
         current=data.get('file')
         if current:
             build_workspace.safe_path(folder,current)
@@ -327,7 +340,12 @@ def _action(data):
         except ValueError:
             diff=None;warnings.append('File changes could not refresh. Chat and task controls are still available.')
         return {'messages':messages,'permission_error':permission_error,'context':build_context(messages),'status':status,'permissions':pending,'diff':diff,'warnings':warnings,'recovery':task_recovery(messages,status,permission_error)}
-    if verb=='abort':return request('/session/'+session+'/abort',{},name=name)
+    if verb=='abort':
+        result=request('/session/'+session+'/abort',{},name=name)
+        # Ending the local process does not end a command running in the container.
+        try:sandbox.stop_commands(folder)
+        except (ValueError,OSError,subprocess.SubprocessError):pass
+        return result
     if verb=='permission':
         ident=data.get('permission');reply=data.get('reply')
         with _permission_lock:
@@ -409,6 +427,8 @@ def project_command_allowed(permission,folder,messages,checks_only=True):
     inputs=state.get('input',{})
     if not isinstance(inputs,dict) or set(inputs)-{'command','workdir','description','timeout'}:return False
     command=inputs.get('command')
+    # Sandboxed calls arrive wrapped by opencode-plugins/sandbox.mjs; judge the original command.
+    command=sandbox.unwrap(command) or command
     # No wildcards, interpolations, redirects, flags, chaining or package downloads.
     checks={'pytest','pytest -q','python -m pytest','python -m pytest -q',
             'python3 -m pytest','python3 -m pytest -q','python -m unittest',

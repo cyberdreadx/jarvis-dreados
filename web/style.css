@@ -328,3 +328,5 @@ body.ide-active main{padding:0!important}body.ide-active .topbar{padding:0 20px}
 
 .build-presence[data-state=preview-check]{--orb-color:#77ecc2;--orb-speed:2s}
 #build-task-timer{font:10px var(--mono);color:#b7a0ff;font-variant-numeric:tabular-nums}.build-thinking>summary{color:#b7a0ff;font-style:italic}.build-thinking pre{color:#8f9bb3;border-left:2px solid #b7a0ff40;padding-left:10px}
+
+.build-sandbox-sub{padding-left:1.6rem}

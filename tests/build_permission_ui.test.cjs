@@ -4,7 +4,8 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 const source = fs.readFileSync(path.join(__dirname, '../web/build.js'), 'utf8');
-const permissionSource = source.slice(source.indexOf('function renderBuildPermissions('), source.indexOf('async function pollBuild()'));
+const permissionSource = source.slice(source.indexOf('function sandboxedCommand('), source.indexOf('function buildToolLabel(')) +
+  source.slice(source.indexOf('function renderBuildPermissions('), source.indexOf('async function pollBuild()'));
 const pending = {id: 'perm_web', permission: 'webfetch', patterns: ['https://example.com']};
 
 function harness(request = async () => true) {
@@ -145,4 +146,15 @@ test('after accepted approval, a failed refresh never permits duplicate submissi
   await h.buttons[1].onclick();
   assert.equal(h.requests.length, 1);
   assert.equal(h.context.buildPermissionsSnapshot, '');
+});
+
+test('sandboxed commands are shown as the original command, not the wrapper', () => {
+  const payload = Buffer.from(JSON.stringify({c: 'npm install three', w: 'C:/p', t: 120})).toString('base64');
+  const {context, elements} = harness();
+  context.atob = value => Buffer.from(value, 'base64').toString('binary');
+  context.TextDecoder = TextDecoder;
+  context.renderBuildPermissions([{id: 'perm_bash', permission: 'bash', patterns: ['C:/x/python.exe -X utf8 C:/x/sandbox.py run ' + payload]}], context.buildEpoch, 'demo', 'ses_first');
+  const text = elements['build-permissions'].children[0].children[0].textContent;
+  assert.match(text, /In sandbox: npm install three/);
+  assert.doesNotMatch(text, /python\.exe/);
 });

@@ -2,7 +2,8 @@
 
 The user starts it explicitly from Build. It runs the project's own package.json
 script with the user's normal permissions, is stopped with its whole process tree,
-and only loopback URLs it prints are ever shown or captured.
+and only loopback URLs it prints are ever shown or captured. With the project's sandbox on,
+npm runs inside its Docker container instead and the printed URL is mapped to the published port.
 """
 import atexit
 import json
@@ -15,6 +16,7 @@ import threading
 import time
 from collections import deque
 from pathlib import Path
+import sandbox
 
 ROOT = Path(__file__).resolve().parent
 # Read by preview_capture (OpenCode's MCP process) so the AI can screenshot the live app.
@@ -25,8 +27,15 @@ ANSI_RE = re.compile(r'\x1b\[[0-9;?]*[ -/]*[@-~]')
 WINDOWS = os.name == 'nt'
 
 _lock = threading.Lock()
-_state = {'gen': 0, 'project': None, 'root': None, 'proc': None, 'status': 'stopped', 'url': None,
+_state = {'gen': 0, 'project': None, 'root': None, 'proc': None, 'status': 'stopped', 'url': None, 'sandboxed': False,
           'script': None, 'error': '', 'started': 0.0, 'log': deque(maxlen=400)}
+
+
+def _script_text(root, script):
+    try:
+        return str(json.loads((Path(root) / 'package.json').read_text(encoding='utf-8'))['scripts'][script])
+    except (OSError, ValueError, KeyError, TypeError):
+        return ''
 
 
 def script_for(root):
@@ -80,6 +89,12 @@ def _spawn(cmd, root):
                             stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace', **extra)
 
 
+def _npm(root, npm, args, sandboxed):
+    if sandboxed:
+        return _spawn(sandbox.dev_command(root, args, _script_text(root, args[-1]) if args[0] == 'run' else ''), root)
+    return _spawn([npm, *args], root)
+
+
 def _pump(proc, gen, find_url):
     for raw in proc.stdout:
         line = ANSI_RE.sub('', raw.rstrip())
@@ -91,18 +106,60 @@ def _pump(proc, gen, find_url):
             if find_url and not _state['url']:
                 found = URL_RE.search(line)
                 if found:
-                    _state.update(url=found.group(0).rstrip('/') + '/', status='running')
+                    url = found.group(0).rstrip('/') + '/'
+                    if _state['sandboxed']:
+                        mapped = sandbox.host_url(_state['root'], url)
+                        if not mapped:
+                            _state['log'].append(f'Port {found.group(1)} is not one the sandbox publishes '
+                                                 f'({", ".join(map(str, sandbox.DEV_PORTS))}). Set the dev server to one of them.')
+                            continue
+                        url = mapped
+                    _state.update(url=url, status='running')
                     _write_state()
 
 
-def _run(gen, root, npm, script):
+NATIVE_SCOPES = ('@esbuild', '@rollup', '@swc', '@next', '@parcel', '@tailwindcss', '@biomejs')
+OS_TOKENS = ('win32', 'linux', 'darwin')
+
+
+def modules_platforms(root):
+    """Operating systems the installed native packages were built for (empty for pure-JS installs)."""
+    found = set()
+    modules = Path(root) / 'node_modules'
+    for scope in NATIVE_SCOPES:
+        try:
+            names = [entry.name for entry in (modules / scope).iterdir()]
+        except OSError:
+            continue
+        found.update(token for name in names for token in OS_TOKENS if token in name)
+    return found
+
+
+def _target_os(sandboxed):
+    return 'linux' if sandboxed else ('win32' if WINDOWS else os.uname().sysname.lower())
+
+
+def _run(gen, root, npm, script, sandboxed=False):
     try:
+        modules = Path(root) / 'node_modules'
+        built_for = modules_platforms(root)
+        if modules.is_dir() and built_for and _target_os(sandboxed) not in built_for:
+            # Packages installed on Windows can't run in the Linux sandbox (and vice versa): reinstall.
+            with _lock:
+                if gen != _state['gen']:
+                    return
+                _state['status'] = 'installing'
+                _state['log'].append(f'node_modules was installed for {"/".join(sorted(built_for))}; '
+                                     f'reinstalling for {"the Linux sandbox" if sandboxed else "this PC"}…')
+            shutil.rmtree(modules, ignore_errors=True)
+            if modules.exists():
+                raise OSError('could not remove the old node_modules folder; close programs using it and retry')
         if not (Path(root) / 'node_modules').is_dir():
             with _lock:
                 if gen != _state['gen']:
                     return
                 _state['log'].append('$ npm install')
-                proc = _state['proc'] = _spawn([npm, 'install'], root)
+                proc = _state['proc'] = _npm(root, npm, ['install'], sandboxed)
             _pump(proc, gen, False)
             if proc.wait() != 0:
                 with _lock:
@@ -114,7 +171,7 @@ def _run(gen, root, npm, script):
                 return
             _state['log'].append(f'$ npm run {script}')
             _state['status'] = 'starting'
-            proc = _state['proc'] = _spawn([npm, 'run', script], root)
+            proc = _state['proc'] = _npm(root, npm, ['run', script], sandboxed)
         _pump(proc, gen, True)
         code = proc.wait()
         with _lock:
@@ -122,7 +179,7 @@ def _run(gen, root, npm, script):
                 _state.update(status='crashed' if code else 'stopped', proc=None,
                               error=f'The dev server exited (code {code}). See the log.' if code else '')
                 _write_state()
-    except OSError as error:
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
         with _lock:
             if gen == _state['gen']:
                 _state.update(status='crashed', error=f'Could not start npm ({error}).', proc=None)
@@ -131,8 +188,12 @@ def _run(gen, root, npm, script):
 def start(root, project):
     root = str(Path(root).resolve())
     script = script_for(root)
+    sandboxed = sandbox.setting(root) is not None
+    if sandboxed and not sandbox.setting(root)['network']:
+        raise ValueError('The sandbox has internet turned off, which also cuts the preview connection. '
+                         'Turn sandbox internet on to run the dev server.')
     npm = shutil.which('npm')
-    if not npm:
+    if not npm and not sandboxed:
         raise ValueError('Node.js is not installed (npm was not found). Install Node.js LTS, then try again.')
     with _lock:
         if _state['project'] == project and _state['status'] in ('installing', 'starting', 'running'):
@@ -141,26 +202,39 @@ def start(root, project):
         _state['gen'] += 1
         gen = _state['gen']
         _state['log'].clear()
-        _state.update(project=project, root=root, proc=None, url=None, script=script, error='', started=time.time(),
+        old_root, was_sandboxed = _state['root'], _state['sandboxed']
+        _state.update(project=project, root=root, proc=None, url=None, script=script, error='', started=time.time(), sandboxed=sandboxed,
                       status='installing' if not (Path(root) / 'node_modules').is_dir() else 'starting')
         _write_state()
     _kill(old)
-    threading.Thread(target=_run, args=(gen, root, npm, script), daemon=True).start()
+    if was_sandboxed:
+        _stop_container_dev(old_root)
+    threading.Thread(target=_run, args=(gen, root, npm, script, sandboxed), daemon=True).start()
     return status()
+
+
+def _stop_container_dev(root):
+    # Killing the local docker client leaves the server running in the container; end its process group.
+    try:
+        sandbox.stop_dev(root)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        pass
 
 
 def stop():
     with _lock:
-        proc = _state['proc']
+        proc, root, sandboxed = _state['proc'], _state['root'], _state['sandboxed']
         _state['gen'] += 1
         _state.update(proc=None, status='stopped', url=None, error='')
         _write_state()
     _kill(proc)
+    if sandboxed:
+        _stop_container_dev(root)
     return status()
 
 
 def _status_locked():
-    return {'project': _state['project'], 'status': _state['status'], 'url': _state['url'], 'script': _state['script'],
+    return {'project': _state['project'], 'status': _state['status'], 'url': _state['url'], 'script': _state['script'], 'sandboxed': _state['sandboxed'],
             'error': _state['error'], 'uptime': int(time.time() - _state['started']) if _state['started'] else 0,
             'log': '\n'.join(list(_state['log'])[-120:])}
 
