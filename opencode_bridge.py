@@ -25,6 +25,7 @@ import knowledge_library
 import preview_capture
 import dev_server
 import sandbox
+import build_terminal
 ROOT=Path(__file__).resolve().parent
 STATE=ROOT/'data/opencode'
 PROJECTS=ROOT/'data/build-projects'
@@ -238,7 +239,8 @@ def _action(data):
         folder.mkdir(parents=True,exist_ok=True)
         return request('/session',{'title':name},name=name)
     if not folder.is_dir():raise ValueError('Project not found.')
-    if verb=='files':return build_workspace.tree(folder)
+    if verb=='files':return {**build_workspace.tree(folder),'root':str(folder.resolve()),'os':'windows' if os.name=='nt' else sys.platform}
+    if verb=='reveal':return build_workspace.reveal(folder,data.get('path') or None)
     if verb=='read':return build_workspace.read(folder,data.get('path'))
     if verb in ('save','new_file'):return build_workspace.save(folder,data.get('path'),data.get('content',''),data.get('revision'),create=verb=='new_file')
     if verb=='preview':return build_workspace.preview(folder,data.get('path'),data.get('drafts'))
@@ -251,6 +253,11 @@ def _action(data):
         if report.get('isError'):raise ValueError(report['content'][0]['text'])
         result=site_audit.audit(name,page)
         return {'score':result['score'],'counts':result['counts'],'report':report['content'][0]['text']}
+    if verb=='term_run':return build_terminal.run(folder,data.get('command'))
+    if verb=='term_input':return build_terminal.send_input(folder,data.get('text'))
+    if verb=='term_stop':return build_terminal.stop(folder)
+    if verb=='term_clear':return build_terminal.clear(folder)
+    if verb=='term_status':return build_terminal.status(folder,data.get('since'))
     if verb=='dev_start':return dev_server.start(folder,name)
     if verb=='dev_stop':return dev_server.stop()
     if verb=='sandbox_status':return sandbox.status(folder)

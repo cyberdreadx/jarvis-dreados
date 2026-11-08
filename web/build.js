@@ -88,11 +88,12 @@ function renderBuildFiles(){
  const query=$('build-file-filter').value.toLowerCase();$('build-file-tree').replaceChildren();
  const root={dirs:new Map(),files:[]};
  for(const file of buildFiles.filter(f=>f.path.toLowerCase().includes(query))){let node=root;const parts=file.path.split('/');for(const segment of parts.slice(0,-1)){if(!node.dirs.has(segment))node.dirs.set(segment,{dirs:new Map(),files:[]});node=node.dirs.get(segment);}node.files.push(file);}
- function draw(node,parent,prefix=""){for(const [name,child] of node.dirs){const folder=document.createElement('details');folder.className='ide-folder';const key=prefix+name;folder.open=query?true:!buildClosedFolders.has(key);folder.ontoggle=()=>{if(folder.open)buildClosedFolders.delete(key);else buildClosedFolders.add(key);};const label=document.createElement('summary');label.textContent=name;folder.append(label);draw(child,folder,key+"/");parent.append(folder);}for(const file of node.files){const b=document.createElement('button');b.className='ide-file';b.textContent=file.path.split('/').pop();b.dataset.ext=file.path.split('.').pop();b.title=file.path;b.setAttribute('aria-current',String(file.path===buildFile));b.onclick=()=>buildAction(()=>openBuildFile(file.path));parent.append(b);}}
+ function draw(node,parent,prefix=""){for(const [name,child] of node.dirs){const folder=document.createElement('details');folder.className='ide-folder';const key=prefix+name;folder.open=query?true:!buildClosedFolders.has(key);folder.ontoggle=()=>{if(folder.open)buildClosedFolders.delete(key);else buildClosedFolders.add(key);};const label=document.createElement('summary');label.textContent=name;label.oncontextmenu=e=>openBuildCtx(e,key,'dir');folder.append(label);draw(child,folder,key+"/");parent.append(folder);}for(const file of node.files){const b=document.createElement('button');b.className='ide-file';b.textContent=file.path.split('/').pop();b.dataset.ext=file.path.split('.').pop();b.title=file.path;b.setAttribute('aria-current',String(file.path===buildFile));b.onclick=()=>buildAction(()=>openBuildFile(file.path));b.oncontextmenu=e=>openBuildCtx(e,file.path,'file');parent.append(b);}}
  draw(root,$('build-file-tree'));
  if(!$('build-file-tree').children.length){const p=document.createElement('p');p.className='ide-empty';p.textContent=buildProject?'No matching files. Create one below or ask OpenCode to build.':'Choose a project to explore its files.';$('build-file-tree').append(p);}
 }
-async function refreshBuildFiles(){if(!$('build-project').value)return;const epoch=buildEpoch,data=await buildRequest('files');if(epoch!==buildEpoch)return;if(JSON.stringify(buildFiles)!==JSON.stringify(data.files)){buildFiles=data.files;renderBuildFiles();}if(data.truncated)$('build-file-status').textContent='Showing first 1,200 files.';}
+let buildFilesInfo={root:'',os:''};
+async function refreshBuildFiles(){if(!$('build-project').value)return;const epoch=buildEpoch,data=await buildRequest('files');if(epoch!==buildEpoch)return;buildFilesInfo={root:data.root||'',os:data.os||''};if(JSON.stringify(buildFiles)!==JSON.stringify(data.files)){buildFiles=data.files;renderBuildFiles();}if(data.truncated)$('build-file-status').textContent='Showing first 1,200 files.';}
 async function openBuildFile(path,reload=false){
  if(reload&&buildBuffers.get(path)?.content!==buildBuffers.get(path)?.saved&&!confirm('Discard the unsaved draft and reload this file from disk?'))return;
  const epoch=buildEpoch;
@@ -164,6 +165,77 @@ $('build-dev-toggle').onclick=()=>buildAction(async()=>{
  buildDevLogOpen=false;renderBuildDev(await buildRequest('dev_start'));
 });
 $('build-dev-log-toggle').onclick=()=>{buildDevLogOpen=$('build-dev-log').hidden;renderBuildDev(buildDev);};
+
+// ---- Terminal panel: runs commands in the selected project folder (build_terminal.py) ----
+const buildTerm={project:'',offset:null,running:false,timer:null,busy:false,history:[],at:-1,draft:''};
+const BUILD_TERM_KEEP=200000;
+function buildTermOpen(){return !$('ide-terminal').hidden;}
+function setBuildTermOpen(open){
+ $('ide-terminal').hidden=!open;$('build-term-toggle').setAttribute('aria-pressed',String(open));
+ try{localStorage.setItem('dreados-term-open',open?'1':'0');}catch{}
+ if(open){refreshBuildTerm();$('build-term-command').focus();}else clearTimeout(buildTerm.timer);
+}
+function renderBuildTerm(data){
+ const out=$('build-term-output'),atBottom=out.scrollHeight-out.scrollTop-out.clientHeight<40;
+ let text=data.reset?data.output:out.textContent+(data.output||'');
+ // A carriage return redraws the line (progress bars); keep a trailing one until more text arrives.
+ text=text.replace(/[^\n\r]*\r(?=[^\n])/g,'');
+ if(text.length>BUILD_TERM_KEEP)text=text.slice(-BUILD_TERM_KEEP);
+ if(text!==out.textContent)out.textContent=text;
+ if(atBottom||data.reset)out.scrollTop=out.scrollHeight;
+ buildTerm.offset=data.offset;buildTerm.running=data.running;buildTerm.sandboxed=!!data.sandboxed;
+ $('build-term-where').textContent=(data.sandboxed?'🔒 sandbox · ':'')+buildTerm.project+(data.cwd&&data.cwd!=='.'?'/'+data.cwd:'');
+ const state=$('build-term-state');state.dataset.state=data.running?'running':'';
+ state.textContent=data.running?'Running · type to answer prompts · Ctrl+C stops':data.exit?'Last command exited with code '+data.exit:'';
+ $('build-term-prompt').textContent=data.running?'input ›':(data.cwd&&data.cwd!=='.'?data.cwd:'')+'>';
+ $('build-term-command').placeholder=data.running?'Send a line to the running command':'Type a command, e.g. python main.py (Enter to run)';
+ $('build-term-stop').disabled=!data.running;
+}
+async function refreshBuildTerm(){
+ clearTimeout(buildTerm.timer);
+ const project=$('build-project').value;
+ if(!buildTermOpen())return;
+ if(!project){$('build-term-output').textContent='Choose a project to use the terminal.';$('build-term-where').textContent='';return;}
+ if(project!==buildTerm.project){buildTerm.project=project;buildTerm.offset=null;$('build-term-output').textContent='';}
+ try{
+  const data=await buildRequest('term_status',{since:buildTerm.offset});
+  if(project!==$('build-project').value)return;
+  const finished=buildTerm.running&&!data.running;
+  renderBuildTerm(data);
+  if(finished)buildAction(refreshBuildFiles);  // show files the command created
+  if(data.running)buildTerm.timer=setTimeout(refreshBuildTerm,350);
+ }catch(error){$('build-term-state').textContent=error.message;buildTerm.timer=setTimeout(refreshBuildTerm,2000);}
+}
+async function buildTermAction(action,extra={}){
+ if(buildTerm.busy)return;buildTerm.busy=true;
+ try{await buildRequest(action,extra);}catch(error){$('build-term-output').textContent+=error.message+'\n';}
+ finally{buildTerm.busy=false;await refreshBuildTerm();}
+}
+$('build-term-toggle').onclick=()=>setBuildTermOpen(!buildTermOpen());
+$('build-term-close').onclick=()=>setBuildTermOpen(false);
+$('build-term-stop').onclick=()=>buildTermAction('term_stop');
+$('build-term-clear').onclick=()=>buildTermAction('term_clear');
+$('build-term-form').onsubmit=e=>{
+ e.preventDefault();if(!requireBuildProject())return;
+ const input=$('build-term-command'),text=input.value;input.value='';
+ if(buildTerm.running){buildTermAction('term_input',{text});return;}
+ if(!text.trim())return;
+ if(buildTerm.history.at(-1)!==text)buildTerm.history.push(text);buildTerm.history=buildTerm.history.slice(-100);buildTerm.at=-1;
+ if(/^\s*(clear|cls)\s*$/i.test(text)){buildTermAction('term_clear');return;}
+ buildTermAction('term_run',{command:text});
+};
+$('build-term-command').onkeydown=e=>{
+ const input=e.currentTarget,h=buildTerm.history;
+ if(e.key==='c'&&e.ctrlKey&&buildTerm.running&&input.selectionStart===input.selectionEnd){e.preventDefault();buildTermAction('term_stop');return;}
+ if((e.key==='ArrowUp'||e.key==='ArrowDown')&&!buildTerm.running&&h.length){
+  e.preventDefault();if(buildTerm.at<0)buildTerm.draft=input.value;
+  buildTerm.at=e.key==='ArrowUp'?(buildTerm.at<0?h.length-1:Math.max(0,buildTerm.at-1)):(buildTerm.at<0?-1:buildTerm.at+1);
+  if(buildTerm.at>=h.length)buildTerm.at=-1;
+  input.value=buildTerm.at<0?buildTerm.draft:h[buildTerm.at];
+ }
+};
+document.addEventListener('keydown',e=>{if(e.ctrlKey&&e.key==='`'&&!$('build-view').hidden){e.preventDefault();setBuildTermOpen(!buildTermOpen());}});
+try{if(localStorage.getItem('dreados-term-open')==='1'){$('ide-terminal').hidden=false;$('build-term-toggle').setAttribute('aria-pressed','true');}}catch{}
 let buildPreviewRequest=0;
 async function refreshBuildPreview(){
  const request=++buildPreviewRequest,epoch=buildEpoch,status=$('build-preview-status');
@@ -191,7 +263,7 @@ async function switchBuildProject(name){
  resetBuildTerminalApproval();
  if(window.showContextMeter)showContextMeter('build-context-meter',null);
  buildEpoch++;buildPolling=false;buildMessagesSnapshot='';buildPermissionsSnapshot='';clearInterval(buildTimer);resetBuildTaskTimer();buildProject=name;buildImages=[];renderBuildImages();buildFiles=[];buildBuffers.clear();buildFile='';displayBuildFile();clearTimeout(buildLiveTimer);buildPreviewRequest++;$('build-preview').removeAttribute('src');$('build-preview-status').textContent='Choose Preview to load this project.';$('build-output').replaceChildren();$('build-permissions').replaceChildren();$('build-recovery').hidden=true;$('build-diff').textContent='No changes loaded.';$('build-session').replaceChildren(new Option('Choose a session',''));
- renderBuildDev(null);renderBuildSandbox(null);
+ renderBuildDev(null);renderBuildSandbox(null);refreshBuildTerm();
  if(name){refreshBuildSandbox();await refreshBuildFiles();if(!$('ide-preview-panel').hidden)await refreshBuildPreview();await loadBuildSessions();refreshBuildDev();}
 }
 let buildConnecting=false;
@@ -470,6 +542,7 @@ function buildTerminalEnabled(){
 function resetBuildTerminalApproval(){
  buildTerminalScope=null;$('build-auto-bash').checked=false;
  $('build-approval-status').textContent='Other commands ask first · Context compacts automatically';
+ if(typeof renderBuildPerms==='function')renderBuildPerms();
 }
 $('build-auto-bash').onchange=()=>{
  if(!$('build-auto-bash').checked){resetBuildTerminalApproval();return;}
@@ -601,6 +674,7 @@ function renderBuildSandbox(info){
  box.checked=!!info?.enabled;net.checked=info?info.network!==false:true;$('build-sandbox-net-row').hidden=!info?.enabled;
  const on=!!info?.enabled;
  $('build-terminal-warning').textContent=on?'For this session only. Commands run inside this project\'s Docker sandbox: they can only see this project folder'+(info.network===false?' and have no internet.':', can use the internet, and can\'t touch the rest of your PC.'):'For this session only. Commands run with your PC permissions and can modify files outside the project, install software or access the network. This is not a sandbox.';
+ renderBuildPerms();
  if(!info){label.textContent='';return;}
  label.textContent=!info.installed?'Docker is not installed · install Docker Desktop to sandbox commands':!info.running?'Docker is not running · start Docker Desktop to use the sandbox':info.error?info.error:info.downloading?'Downloading the sandbox (one time, about 400 MB)…':on?('Linux container · only this project at /work'+(info.network===false?' · no internet (dev server off)':'')):'Commands run directly on this PC';
 }
@@ -619,3 +693,72 @@ async function setBuildSandbox(){
 }
 $('build-sandbox').onchange=setBuildSandbox;
 $('build-sandbox-net').onchange=setBuildSandbox;
+
+// Collapsed "Permissions" row: one-line summary of the switches, details on click.
+function renderBuildPerms(){
+ const on=id=>$(id).checked,parts=[(on('build-auto-edits')?'✓':'✗')+' Edits',(on('build-auto-checks')?'✓':'✗')+' Tests',(buildTerminalEnabled()?'✓':'✗')+' Bash'];
+ parts.push(on('build-sandbox')?'🔒 Sandbox'+(on('build-sandbox-net')?'':' · offline'):'No sandbox');
+ $('build-perms-summary').textContent=parts.join(' · ');
+ $('build-perms').classList.toggle('build-perms-risky',buildTerminalEnabled()&&!on('build-sandbox'));
+}
+$('build-perms').addEventListener('change',()=>setTimeout(renderBuildPerms));
+$('build-perms').addEventListener('toggle',()=>{try{localStorage.setItem('dreados-perms-open',$('build-perms').open?'1':'0');}catch{}});
+try{$('build-perms').open=localStorage.getItem('dreados-perms-open')==='1';}catch{}
+renderBuildPerms();
+
+// ---- Right-click menu in the file explorer ----
+async function copyBuildText(text){
+ try{await navigator.clipboard.writeText(text);}
+ catch{const t=document.createElement('textarea');t.value=text;t.style.position='fixed';t.style.opacity='0';document.body.append(t);t.select();document.execCommand('copy');t.remove();}
+ $('build-file-status').textContent='Copied: '+text;
+}
+async function buildTermGo(dir,command){
+ setBuildTermOpen(true);
+ if(buildTerm.running){$('build-term-state').textContent='A command is still running. Stop it first.';return;}
+ await buildTermAction('term_run',{command:'cd'});
+ if(dir)await buildTermAction('term_run',{command:'cd "'+dir+'"'});
+ if(command)await buildTermAction('term_run',{command});
+}
+function closeBuildCtx(){const m=$('build-ctx-menu');if(m){m.remove();document.removeEventListener('pointerdown',buildCtxOutside,true);}}
+// Right-button presses are ignored: some browsers send them after the contextmenu event that opened the menu.
+function buildCtxOutside(e){if(e.button!==2&&!e.target.closest('#build-ctx-menu'))closeBuildCtx();}
+document.addEventListener('contextmenu',e=>{if(!e.target.closest('#build-file-tree,#build-ctx-menu'))closeBuildCtx();});
+function openBuildCtx(event,path,kind){
+ event.preventDefault();event.stopPropagation();closeBuildCtx();
+ if(!$('build-project').value)return;
+ const win=buildFilesInfo.os==='windows',mac=buildFilesInfo.os==='darwin',sep=win?'\\':'/';
+ const full=buildFilesInfo.root+(path?sep+path.split('/').join(sep):'');
+ const dir=kind==='file'?path.split('/').slice(0,-1).join('/'):path,name=path.split('/').pop();
+ const ext=kind==='file'?name.split('.').pop().toLowerCase():'';
+ const runner={py:win&&!buildTerm.sandboxed?'python':'python3',js:'node',mjs:'node',cjs:'node'}[ext];
+ const items=[];
+ if(kind==='file')items.push(['Open',()=>buildAction(()=>openBuildFile(path))]);
+ if(kind==='file'&&runner)items.push(['Run in Terminal',()=>buildTermGo(dir,runner+' "'+name+'"')]);
+ items.push([mac?'Reveal in Finder':win?'Show in File Explorer':'Open containing folder',()=>buildAction(()=>buildRequest('reveal',{path}))]);
+ items.push([kind==='file'?'Open folder in Terminal':'Open in Terminal',()=>buildTermGo(dir)]);
+ items.push(null,['Copy path',()=>copyBuildText(full)]);
+ if(path)items.push(['Copy relative path',()=>copyBuildText(path)]);
+ const menu=document.createElement('div');menu.id='build-ctx-menu';menu.className='build-ctx-menu';menu.setAttribute('role','menu');
+ menu.setAttribute('aria-label',(path||'Project')+' actions');
+ for(const item of items){
+  if(!item){const hr=document.createElement('div');hr.className='build-ctx-sep';hr.setAttribute('role','separator');menu.append(hr);continue;}
+  const b=document.createElement('button');b.type='button';b.setAttribute('role','menuitem');b.textContent=item[0];
+  b.onclick=()=>{closeBuildCtx();item[1]();};menu.append(b);
+ }
+ menu.onkeydown=e=>{
+  const buttons=[...menu.querySelectorAll('button')],i=buttons.indexOf(document.activeElement);
+  if(e.key==='Escape'){e.preventDefault();closeBuildCtx();event.target.focus?.();}
+  else if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();buttons[(i+(e.key==='ArrowDown'?1:-1)+buttons.length)%buttons.length].focus();}
+  else if(e.key==='Tab')closeBuildCtx();
+ };
+ document.body.append(menu);
+ const rect=event.target.getBoundingClientRect();
+ let x=event.clientX||rect.left+12,y=event.clientY||rect.bottom;
+ x=Math.min(x,innerWidth-menu.offsetWidth-8);y=Math.min(y,innerHeight-menu.offsetHeight-8);
+ menu.style.left=Math.max(8,x)+'px';menu.style.top=Math.max(8,y)+'px';
+ menu.querySelector('button').focus();
+ document.addEventListener('pointerdown',buildCtxOutside,true);
+}
+$('build-file-tree').addEventListener('contextmenu',e=>{if(e.target===$('build-file-tree')||e.target.classList.contains('ide-empty'))openBuildCtx(e,'','dir');});
+window.addEventListener('blur',closeBuildCtx);window.addEventListener('resize',closeBuildCtx);
+$('build-file-tree').addEventListener('scroll',closeBuildCtx);

@@ -4,6 +4,8 @@ import mimetypes
 import os
 import re
 import secrets
+import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
@@ -17,7 +19,9 @@ _previews={}
 def safe_path(root,name):
     if not isinstance(name,str) or not name or len(name)>240:raise ValueError('Choose a project-relative file path.')
     parts=name.replace('\\','/').split('/')
-    if any(not re.fullmatch(r'[A-Za-z0-9_. -]+',p) or p in ('.','..') or p.lower() in SKIP or p.lower().startswith('.env') or p.endswith((' ','.')) or p.split('.')[0].upper() in {'CON','PRN','AUX','NUL',*[f'COM{i}' for i in range(1,10)],*[f'LPT{i}' for i in range(1,10)]} for p in parts):
+    # Letters (any language), digits and common harmless punctuation such as "Alexander's, Vol. 1 (1938)".
+    # No wildcards, quotes, $ or path/stream separators.
+    if any(not re.fullmatch(r"[\w. ,'()&+!@=~-]+",p) or p in ('.','..') or p.lower() in SKIP or p.lower().startswith('.env') or p.endswith((' ','.')) or p.split('.')[0].upper() in {'CON','PRN','AUX','NUL',*[f'COM{i}' for i in range(1,10)],*[f'LPT{i}' for i in range(1,10)]} for p in parts):
         raise ValueError('This file path is not allowed.')
     root=root.resolve();path=root
     for part in parts:
@@ -50,6 +54,22 @@ def tree(root):
             if len(files)>=1200:truncated=True;break
         if truncated:break
     return {'files':files,'truncated':truncated}
+
+def _reveal_command(path):
+    """Command that shows path in the PC's file manager (file selected, or folder opened)."""
+    if os.name=='nt':
+        # explorer.exe parses its own command line; safe_path rules out quotes in names.
+        return f'explorer.exe /select,"{path}"' if path.is_file() else f'explorer.exe "{path}"'
+    if sys.platform=='darwin':return ['open','-R',str(path)] if path.is_file() else ['open',str(path)]
+    return ['xdg-open',str(path.parent if path.is_file() else path)]
+
+def reveal(root,name=None):
+    """Open this project file or folder in File Explorer / Finder on the PC running DreadOS."""
+    path=root.resolve() if not name else safe_path(root,name)
+    if not path.exists():raise ValueError('That file or folder no longer exists.')
+    try:subprocess.Popen(_reveal_command(path),stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+    except OSError as error:raise ValueError(f'Could not open the file manager ({error}).') from None
+    return {'revealed':str(path)}
 
 def save(root,name,content,expected,create=False):
     if not isinstance(content,str) or len(content.encode('utf-8'))>LIMIT:raise ValueError('Keep files under 500 KB.')

@@ -330,3 +330,31 @@ body.ide-active main{padding:0!important}body.ide-active .topbar{padding:0 20px}
 #build-task-timer{font:10px var(--mono);color:#b7a0ff;font-variant-numeric:tabular-nums}.build-thinking>summary{color:#b7a0ff;font-style:italic}.build-thinking pre{color:#8f9bb3;border-left:2px solid #b7a0ff40;padding-left:10px}
 
 .build-sandbox-sub{padding-left:1.6rem}
+
+/* Build terminal panel (docked under the code/preview area) */
+.ide-view-tabs .ide-term-toggle{margin-left:auto;font-family:var(--mono)}
+#ide-terminal{flex:none;height:clamp(160px,34%,420px);display:flex;flex-direction:column;min-height:0;border-top:1px solid #303b4f;background:#0a0e16}
+#ide-terminal[hidden]{display:none}
+.ide-workbench.ide-split{grid-template-rows:37px minmax(0,1fr) auto}.ide-split>#ide-terminal{grid-column:1/-1;height:clamp(160px,34vh,420px)}
+.ide-term-bar{display:flex;align-items:center;gap:10px;padding:4px 10px;min-height:30px;border-bottom:1px solid #1e2636;font:10px var(--mono);color:#8495ad}
+.ide-term-title{letter-spacing:1px;color:#b7c4d8}.ide-term-where{color:#7fd6ff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ide-term-state{flex:1;color:#8f9bb3}.ide-term-state[data-state=running]{color:#77ecc2}
+.ide-term-bar button{padding:3px 8px;font-size:11px}
+.ide-term-output{flex:1;min-height:0;margin:0;padding:8px 12px;overflow:auto;font:12px/1.5 Consolas,'Cascadia Mono',monospace;color:#cfdbe9;white-space:pre-wrap;overflow-wrap:anywhere}
+.ide-term-input{display:flex;align-items:center;gap:6px;padding:4px 12px 8px;font:12px Consolas,'Cascadia Mono',monospace}
+.ide-term-input label{color:#77ecc2;white-space:nowrap}
+.ide .ide-term-input input{flex:1;background:transparent;border:0;border-radius:0;padding:4px 0;color:#e8f0fb;font:12px Consolas,'Cascadia Mono',monospace;outline:none}
+@media(max-width:900px){.ide-workbench.ide-split{grid-template-rows:37px minmax(0,1fr) minmax(0,1fr) auto}}
+/* Collapsed approval switches in the Build agent panel */
+.build-perms{margin:6px 0;border:1px solid #232c3d;border-radius:6px;background:#0d121c}
+.build-perms>summary{display:flex;align-items:center;gap:8px;padding:6px 10px;cursor:pointer;list-style:none;font-size:11px;color:#8f9bb3}
+.build-perms>summary::-webkit-details-marker{display:none}
+.build-perms>summary::before{content:'▸';color:#65738a;transition:transform .15s}.build-perms[open]>summary::before{transform:rotate(90deg)}
+.build-perms-title{color:#b7c4d8;font-weight:600;letter-spacing:.3px}
+.build-perms-summary{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono);font-size:10px}
+.build-perms.build-perms-risky .build-perms-summary{color:#f0c674}
+.build-perms-body{padding:0 10px 8px;border-top:1px solid #1b2232}
+/* Right-click menu in Build's file explorer */
+.build-ctx-menu{position:fixed;z-index:1000;min-width:200px;padding:4px;background:#161c28;border:1px solid #303b4f;border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,.45)}
+.build-ctx-menu button{display:block;width:100%;margin:0;padding:6px 12px;text-align:left;background:transparent;border:0;border-radius:4px;color:#dce5f4;font:12px 'Segoe UI',sans-serif;cursor:pointer}
+.build-ctx-menu button:hover,.build-ctx-menu button:focus-visible{background:#253e55;outline:none}
+.build-ctx-sep{height:1px;margin:4px 6px;background:#2a3446}

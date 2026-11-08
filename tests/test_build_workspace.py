@@ -18,6 +18,26 @@ class WorkspaceTests(unittest.TestCase):
  def test_path_boundaries(self):
   for name in ['../secret','C:/secret','a/../../secret','.env','.env.local','a/.git/config','a:stream','CON.txt','file.','/abs','a//b','.dreados-history/test']:
    with self.subTest(name=name),self.assertRaises(ValueError):w.safe_path(self.root,name)
+  for name in ['a*b','a?b','a[1]','say"hi"','$HOME','a|b','a<b','a\tb']:
+   with self.subTest(name=name),self.assertRaises(ValueError):w.safe_path(self.root,name)
+ def test_reveal_opens_file_manager_only_inside_project(self):
+  (self.root/'samples').mkdir();(self.root/'samples/a b.mp3').write_bytes(b'x')
+  with patch.object(w.subprocess,'Popen') as popen:
+   w.reveal(self.root,'samples/a b.mp3');w.reveal(self.root,'samples');w.reveal(self.root)
+   for name in ['../x','samples/missing.mp3','C:/Windows']:
+    with self.subTest(name=name),self.assertRaises(ValueError):w.reveal(self.root,name)
+  commands=[c.args[0] for c in popen.call_args_list]
+  self.assertEqual(len(commands),3)
+  if w.os.name=='nt':
+   self.assertEqual(commands[0],f'explorer.exe /select,"{self.root.resolve()/"samples"/"a b.mp3"}"')
+   self.assertEqual(commands[1],f'explorer.exe "{self.root.resolve()/"samples"}"')
+   self.assertEqual(commands[2],f'explorer.exe "{self.root.resolve()}"')
+ def test_common_music_and_document_names_are_listed(self):
+  names=["samples/Jack_Hylton/Alexander's_Ragtime_Band.mp3","samples/Wilson,_Weinberg/Gems (Live) & More!.mp3","Café/notes.txt"]
+  for name in names:
+   path=self.root/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(b'x')
+   self.assertEqual(w.safe_path(self.root,name),self.root.resolve()/name)
+  self.assertEqual(sorted(f['path'] for f in w.tree(self.root)['files']),sorted(names))
  def test_large_javascript_is_viewable_without_allowing_large_writes(self):
   content='// library\n'*(w.LIMIT//10)
   (self.root/'library.js').write_text(content,encoding='utf-8',newline='')

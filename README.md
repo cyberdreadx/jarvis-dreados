@@ -172,6 +172,8 @@ Build also offers **Auto-approve Bash / terminal commands**, off by default and 
 
 **Run commands in a sandbox (Docker)** is a per-project switch in Build (needs Docker Desktop running). With it on, the AI's terminal commands and the dev server run in a Linux container (`node:22-bookworm`, downloaded once) that only sees that project folder at `/work`: no home folder, SSH keys or other projects. The container runs as an unprivileged user with no Linux capabilities, a read-only system, 4 GB memory / 4 CPU / 1024 process limits, and dev-server ports published on 127.0.0.1 only (5173, 3000, 4321, 8080). **Sandbox can use the internet** can be turned off (this also turns off the dev server). Approvals still work as before and show the original command marked 🔒. Stop also ends commands running in the container. Native packages (`node_modules`) installed on Windows are reinstalled for Linux automatically when the dev server starts, and back again when the sandbox is turned off. Implementation: `sandbox.py`, `opencode-plugins/sandbox.mjs`.
 
+**Terminal** (`>_ Terminal` above the editor, or Ctrl+`) runs your own commands in the selected project folder: PowerShell on Windows, `sh` on macOS/Linux, or inside the project's container when its sandbox is on. One command runs at a time; output streams live, typing while a command runs sends a line to it (for scripts that ask for input), Ctrl+C or ■ Stop ends it, and ↑/↓ recall earlier commands. `cd` works but stays inside the project folder. Implementation: `build_terminal.py`.
+
 
 ### Offline coding reference library
 
