@@ -358,3 +358,8 @@ body.ide-active main{padding:0!important}body.ide-active .topbar{padding:0 20px}
 .build-ctx-menu button{display:block;width:100%;margin:0;padding:6px 12px;text-align:left;background:transparent;border:0;border-radius:4px;color:#dce5f4;font:12px 'Segoe UI',sans-serif;cursor:pointer}
 .build-ctx-menu button:hover,.build-ctx-menu button:focus-visible{background:#253e55;outline:none}
 .build-ctx-sep{height:1px;margin:4px 6px;background:#2a3446}
+/* Talk to Build */
+#build-mic.is-recording{color:#ff8f8f;border-color:#ff8f8f66;animation:build-mic-pulse 1.2s ease-in-out infinite}
+#build-mic-level{width:60px;height:6px;align-self:center}
+@keyframes build-mic-pulse{50%{background:#ff6b6b22}}
+@media(prefers-reduced-motion:reduce){#build-mic.is-recording{animation:none}}

@@ -706,6 +706,52 @@ $('build-perms').addEventListener('toggle',()=>{try{localStorage.setItem('dreado
 try{$('build-perms').open=localStorage.getItem('dreados-perms-open')==='1';}catch{}
 renderBuildPerms();
 
+// ---- Talk to Build: record, transcribe on this PC (/api/transcribe), put the text in the prompt ----
+// Uses the Assistant's voice settings: microphone, engine, language, auto-stop on silence, auto-send.
+const buildMic={stream:null,recorder:null,context:null,timer:null,chunks:[],cancelled:false,working:false};
+function buildMicNote(text){$('build-image-status').textContent=text;}
+function buildMicRelease(){
+ clearInterval(buildMic.timer);buildMic.stream?.getTracks().forEach(t=>t.stop());buildMic.stream=null;
+ buildMic.context?.close().catch(()=>{});buildMic.context=null;
+ $('build-mic-level').hidden=true;$('build-mic-level').value=0;$('build-mic').textContent='🎤 Talk';$('build-mic').classList.remove('is-recording');
+}
+function buildMicStop(discard=false){buildMic.cancelled=discard;if(buildMic.recorder?.state==='recording')buildMic.recorder.stop();buildMicRelease();}
+async function buildMicUpload(blob){
+ buildMic.working=true;$('build-mic').disabled=true;buildMicNote('Transcribing on this PC…');
+ try{
+  const audio=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result.split(',')[1]);reader.onerror=reject;reader.readAsDataURL(blob);});
+  const response=await fetch('/api/transcribe',{method:'POST',headers:{'Content-Type':'application/json','X-Jarvis-Token':token},body:JSON.stringify({audio,engine:$('mic-engine').value,language:$('mic-language').value}),signal:AbortSignal.timeout(180000)});
+  const data=await response.json().catch(()=>({}));if(!response.ok)throw Error(data.error||'Transcription failed.');
+  if(!data.text){buildMicNote('No speech detected. Try again closer to the microphone.');return;}
+  const prompt=$('build-prompt');prompt.value=[prompt.value.trim(),data.text].filter(Boolean).join(' ');prompt.focus();prompt.dispatchEvent(new Event('input'));
+  if($('mic-auto').checked&&!buildAgentBusy&&!buildBusy){buildMicNote('Sending…');$('send-build').click();}
+  else buildMicNote('Transcribed. Review your request, then press Send.');
+ }catch(error){buildMicNote(error.name==='TimeoutError'?'Transcription took too long. Try a shorter recording.':error.message);}
+ finally{buildMic.working=false;$('build-mic').disabled=false;}
+}
+$('build-mic').onclick=async()=>{
+ if(buildMic.recorder?.state==='recording'){buildMicStop();return;}
+ if(buildMic.working||buildMic.stream)return;
+ if(!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder){buildMicNote('Microphone recording needs Chrome or Edge, and a secure (https or localhost) address.');return;}
+ if(typeof listening!=='undefined'&&listening){buildMicNote('The Assistant is already listening. Finish that recording first.');return;}
+ buildMic.cancelled=false;
+ try{
+  const device=$('mic-device').value;
+  buildMic.stream=await navigator.mediaDevices.getUserMedia({audio:{deviceId:device?{exact:device}:undefined,echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
+  const context=buildMic.context=new AudioContext();await context.resume();const analyser=context.createAnalyser();analyser.fftSize=1024;context.createMediaStreamSource(buildMic.stream).connect(analyser);
+  const type=['audio/webm;codecs=opus','audio/webm','audio/mp4'].find(t=>MediaRecorder.isTypeSupported(t));
+  const recorder=buildMic.recorder=new MediaRecorder(buildMic.stream,type?{mimeType:type}:{});buildMic.chunks=[];
+  recorder.ondataavailable=e=>{if(e.data.size)buildMic.chunks.push(e.data);};
+  recorder.onstop=()=>{if(!buildMic.cancelled)buildMicUpload(new Blob(buildMic.chunks,{type:recorder.mimeType}));};
+  recorder.onerror=()=>{buildMicStop(true);buildMicNote('Recording failed. Check your microphone.');};
+  recorder.start();$('build-mic').textContent='■ Done';$('build-mic').classList.add('is-recording');$('build-mic-level').hidden=false;
+  buildMicNote('Listening… click ■ Done when finished'+($('mic-silence').checked?' (or pause for 2 seconds).':'.'));
+  const samples=new Float32Array(analyser.fftSize),began=Date.now();let lastSpeech=began,heard=false;
+  buildMic.timer=setInterval(()=>{analyser.getFloatTimeDomainData(samples);const rms=Math.sqrt(samples.reduce((sum,v)=>sum+v*v,0)/samples.length);$('build-mic-level').value=Math.min(1,rms*8);if(rms>.015){heard=true;lastSpeech=Date.now();}if(Date.now()-began>=60000||($('mic-silence').checked&&heard&&Date.now()-lastSpeech>2000))buildMicStop();},100);
+ }catch(error){buildMicRelease();buildMicNote(error.name==='NotAllowedError'?'Allow microphone access in your browser to talk to Build.':'Microphone unavailable: '+error.message);}
+};
+window.addEventListener('pagehide',()=>buildMicStop(true));
+
 // ---- Right-click menu in the file explorer ----
 async function copyBuildText(text){
  try{await navigator.clipboard.writeText(text);}
